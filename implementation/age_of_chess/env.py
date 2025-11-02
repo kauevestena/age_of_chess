@@ -80,6 +80,26 @@ class Engine:
                         seen[u.side] = True
         return seen
 
+    def observe(self, agent: str) -> np.ndarray:
+        """Return a channel-first binary tensor encoding board occupancy from the agent's perspective."""
+        rows = self.state.board.rows
+        cols = self.state.board.cols
+        obs = np.zeros((12, rows, cols), dtype=np.int8)
+        own = agent
+        opp = "south" if agent == "north" else "north"
+        code_to_idx = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5}
+
+        for r in range(rows):
+            for c in range(cols):
+                sq = self.state.board.grid[r][c]
+                for unit in filter(None, (sq.top, sq.bottom)):
+                    channel_offset = 0 if unit.side == own else 6
+                    idx = channel_offset + code_to_idx.get(unit.code, 0)
+                    rr, cc = (rows - 1 - r, cols - 1 - c) if agent == "south" else (r, c)
+                    obs[idx, rr, cc] = 1
+
+        return obs
+
     def winner_if_any(self) -> Optional[str]:
         seen = self.kings_present()
         if seen["north"] and not seen["south"]:

@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 
 def main():
