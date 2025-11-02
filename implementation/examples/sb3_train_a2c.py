@@ -1,4 +1,6 @@
 # A2C baseline without action masking (will sample illegal actions sometimes and get penalties)
+import _script_setup  # noqa: F401
+
 from stable_baselines3 import A2C
 from gymnasium.wrappers import FlattenObservation
 from implementation.age_of_chess.sb3_env import AOCSingleAgentSelfPlayEnv

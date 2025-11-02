@@ -1,5 +1,7 @@
 
 # MaskablePPO training with checkpoint snapshots and auto mini-league vs previous checkpoint.
+import _script_setup  # noqa: F401
+
 import os, time, glob
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker

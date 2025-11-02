@@ -7,11 +7,33 @@ from .utils import in_bounds
 Action = Tuple[int,int,int,int,int,int]  # (from_r,from_c,slot_idx,to_r,to_c,action_type)
 # action_type: 0=move/stack, 1=melee, 2=ranged, 3=convert
 
+ALL_DIRS: List[Tuple[int, int]] = [
+    (dr, dc)
+    for dr in (-1, 0, 1)
+    for dc in (-1, 0, 1)
+    if dr != 0 or dc != 0
+]
+SIDEWAYS_DIRS: List[Tuple[int, int]] = [(0, -1), (0, 1)]
+ATTACK_FIELD_DEPTH = 4
+
+
 def forward_dirs(side: str) -> List[Tuple[int,int]]:
     if side == "north":
         return [(-1,-1),(-1,0),(-1,1)]
     else:
         return [(1,-1),(1,0),(1,1)]
+
+
+def is_last_rank(side: str, row: int, rows: int) -> bool:
+    return row == (0 if side == "north" else rows - 1)
+
+
+def in_attack_field(side: str, row: int, rows: int) -> bool:
+    depth = min(ATTACK_FIELD_DEPTH, rows)
+    if side == "north":
+        return row < depth
+    return row >= rows - depth
+
 
 def clear_los(state: GameState, r0:int, c0:int, r1:int, c1:int) -> bool:
     """Forward-only LOS up to distance 2.
@@ -40,6 +62,8 @@ def gen_single_moves(state: GameState, rules: Ruleset) -> List[Action]:
                     continue
                 code = u.code
                 fdirs = forward_dirs(side)
+                attack_field = in_attack_field(side, r, rows)
+                last_rank = is_last_rank(side, r, rows)
 
                 if code == "N":
                     for d1 in fdirs:
@@ -56,8 +80,30 @@ def gen_single_moves(state: GameState, rules: Ruleset) -> List[Action]:
                                 actions.append((r,c,slot_idx,r2,c2,0))
                             elif dst2.top and dst2.top.side != side:
                                 actions.append((r,c,slot_idx,r2,c2,1))
+                    extra_dirs: List[Tuple[int, int]]
+                    if last_rank:
+                        extra_dirs = [d for d in ALL_DIRS if d not in fdirs]
+                    elif attack_field:
+                        extra_dirs = SIDEWAYS_DIRS
+                    else:
+                        extra_dirs = []
+                    for dr, dc in extra_dirs:
+                        r1, c1 = r + dr, c + dc
+                        if not in_bounds(r1, c1, rows, cols):
+                            continue
+                        dst = state.board.grid[r1][c1]
+                        if dst.top is None or (dst.top.side == side and dst.bottom is None):
+                            actions.append((r, c, slot_idx, r1, c1, 0))
+                        elif dst.top and dst.top.side != side:
+                            actions.append((r, c, slot_idx, r1, c1, 1))
                 else:
-                    for d in fdirs:
+                    if last_rank:
+                        move_dirs = ALL_DIRS
+                    else:
+                        move_dirs = list(dict.fromkeys(fdirs))
+                        if attack_field:
+                            move_dirs.extend(d for d in SIDEWAYS_DIRS if d not in move_dirs)
+                    for d in move_dirs:
                         r1, c1 = r + d[0], c + d[1]
                         if not in_bounds(r1,c1,rows,cols): continue
                         dst = state.board.grid[r1][c1]

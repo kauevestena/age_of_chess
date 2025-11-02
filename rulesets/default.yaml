@@ -6,6 +6,12 @@ game:
     perspective: "north_vs_south"
     directions:
       forward: [[-1, -1], [-1, 0], [-1, 1]]
+    zones:
+      attack_field:
+        depth: 4
+        sideways_steps: [[0, -1], [0, 1]]
+      last_rank:
+        allow_all_directions: true
   turn:
     must_move: true
     move_choice: "single_unit_or_ability"
@@ -20,6 +26,8 @@ game:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         max_steps: 1
         can_move_when_stacked: true
+        attack_field_sideways: true
+        last_rank_all_directions: true
       abilities: []
       capture: "melee"
       interactions:
@@ -42,6 +50,8 @@ game:
           - [[-1, 0], [-1, -1]]
           - [[-1, 1], [-1, 0]]
           - [[-1, 0], [-1, 1]]
+        attack_field_sideways: true
+        last_rank_all_directions: true
       abilities: []
       capture: "melee"
       interactions:
@@ -58,6 +68,8 @@ game:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         max_steps: 1
         can_move_when_stacked: true
+        attack_field_sideways: true
+        last_rank_all_directions: true
       abilities:
         - name: "ranged"
           range: 2
@@ -85,6 +97,8 @@ game:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         max_steps: 1
         can_move_when_stacked: true
+        attack_field_sideways: true
+        last_rank_all_directions: true
       abilities: []
       capture: "melee"
       interactions:
@@ -100,6 +114,8 @@ game:
       move:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         max_steps: 1
+        attack_field_sideways: true
+        last_rank_all_directions: true
         conditional_sideways_back:
           trigger: "adjacent_enemy"
       abilities:
@@ -122,6 +138,8 @@ game:
         threatened_allow: ["sideways", "back", "back_diagonals"]
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         max_steps: 1
+        attack_field_sideways: true
+        last_rank_all_directions: true
       abilities: []
       capture: "melee"
       capture_ends_game: true

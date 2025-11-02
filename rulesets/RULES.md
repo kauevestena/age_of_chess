@@ -4,6 +4,8 @@ This document describes the *human-readable* rules. The simulator reads the mirr
 
 ## Board and Sides
 - 8×8 board; North (White) vs South (Black). North's **forward** is up (toward row 0), South's forward is down.
+- Once a unit enters the enemy attack field (final four ranks), it may also step sideways (left/right).
+- Units stationed on the enemy back rank can step one tile in any direction to avoid being trapped.
 - Squares can contain up to **two friendly units** (a *stack*). One unit of a stack may move off on your turn.
 
 ## Pieces

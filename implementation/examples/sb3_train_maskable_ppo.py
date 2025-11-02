@@ -1,4 +1,6 @@
 # Train MaskablePPO (sb3-contrib) in self-play with action masks
+import _script_setup  # noqa: F401
+
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from gymnasium.wrappers import FlattenObservation

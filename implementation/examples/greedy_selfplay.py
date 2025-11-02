@@ -1,3 +1,5 @@
+import _script_setup  # noqa: F401
+
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 from implementation.age_of_chess.env import Engine
 from implementation.age_of_chess.utils import encode_action

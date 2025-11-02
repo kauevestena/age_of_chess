@@ -1,8 +1,4 @@
-import sys
-from pathlib import Path
-
-if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[2]))
+import _script_setup  # noqa: F401
 
 import random
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0

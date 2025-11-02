@@ -1,3 +1,5 @@
+import _script_setup  # noqa: F401
+
 import os, time, json, datetime
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 from implementation.age_of_chess.agents import GreedyAgent
