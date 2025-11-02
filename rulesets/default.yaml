@@ -1,0 +1,165 @@
+game:
+  name: Age of Chess – Warfare
+  board:
+    rows: 8
+    cols: 8
+    perspective: "north_vs_south"
+    directions:
+      forward: [[-1, -1], [-1, 0], [-1, 1]]
+  turn:
+    must_move: true
+    move_choice: "single_unit_or_ability"
+    minimal_loss_rule:
+      enabled: true
+      priority: ["king_safety", "fewest_losses", "highest_value", "free_choice"]
+  pieces:
+    P:
+      label: "Pikeman"
+      class: "pikeman"
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 1
+        can_move_when_stacked: true
+      abilities: []
+      capture: "melee"
+      interactions:
+        vs:
+          cavalry: "win"
+          heavy_infantry: "lose"
+          pikeman: "mutual"
+          archer: "lose"
+      value: 1
+    N:
+      label: "Cavalry"
+      class: "cavalry"
+      move:
+        forward_combinations_only: true
+        sequences:
+          - [[-1, 0], [-1, 0]]
+          - [[-1, -1], [-1, -1]]
+          - [[-1, 1], [-1, 1]]
+          - [[-1, -1], [-1, 0]]
+          - [[-1, 0], [-1, -1]]
+          - [[-1, 1], [-1, 0]]
+          - [[-1, 0], [-1, 1]]
+      abilities: []
+      capture: "melee"
+      interactions:
+        vs:
+          archer: "win"
+          heavy_infantry: "win_lone_defender"
+          pikeman: "lose"
+          cavalry: "mutual"
+      value: 3
+    B:
+      label: "Archer"
+      class: "archer"
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 1
+        can_move_when_stacked: true
+      abilities:
+        - name: "ranged"
+          range: 2
+          los: "forward_only"
+          kills: ["archer", "pikeman", "priestess"]
+          no_effect: ["cavalry", "heavy_infantry"]
+        - name: "power_shot"
+          requires_stack_size: 2
+          range: 2
+          los: "forward_only"
+          kills: ["cavalry", "heavy_infantry"]
+          vs_stack: "kill_top_only"
+      capture: "melee"
+      interactions:
+        vs:
+          heavy_infantry: "lose"
+          cavalry: "lose"
+          archer: "mutual"
+          pikeman: "lose_melee_win_ranged"
+      value: 3
+    R:
+      label: "Heavy Infantry"
+      class: "heavy_infantry"
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 1
+        can_move_when_stacked: true
+      abilities: []
+      capture: "melee"
+      interactions:
+        vs:
+          archer: "win"
+          pikeman: "win"
+          cavalry: "lose_to_two_pikes_win_vs_lone"
+          heavy_infantry: "mutual"
+      value: 5
+    Q:
+      label: "Priestess"
+      class: "priestess"
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 1
+        conditional_sideways_back:
+          trigger: "adjacent_enemy"
+      abilities:
+        - name: "convert"
+          adjacency: 1
+          targets: ["pikeman", "cavalry", "archer", "heavy_infantry"]
+          exclude: ["king", "priestess"]
+          solitary_only: true
+          priestess_vs_priestess_adjacent: "mutual_death"
+      capture: "special"
+      interactions:
+        vs: {}
+      value: 4
+    K:
+      label: "Commander"
+      class: "king"
+      move:
+        default_forward_only: true
+        threatened_within_radius: 2
+        threatened_allow: ["sideways", "back", "back_diagonals"]
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 1
+      abilities: []
+      capture_ends_game: true
+      value: 100
+  stacking:
+    max_per_square: 2
+    both_can_move: true
+    resolution:
+      vs_stack: "resolve_vs_top_first"
+  victory:
+    conditions: ["capture_king", "opponent_has_no_legal_moves"]
+  setup:
+    standard_chess_starting_positions: true
+
+
+rewards:
+  win: 1.0
+  loss: -1.0
+  draw: 0.0
+  illegal: -0.01
+  step: 0.0
+
+
+rewards:
+  win: 1.0
+  loss: -1.0
+  draw: 0.0
+  illegal: -0.01
+  step: 0.0
+  events:
+    penalties:
+      unit_loss_default: -0.02
+      king_loss: -0.5
+      death_on_charge: -0.05
+    capture:
+      default: 0.05
+      by_attacker:
+        N: 0.10   # bonus if Cavalry makes a capture
+        R: 0.10   # bonus if Heavy Infantry makes a capture
+    conversion: 0.15
+    ranged_kill: 0.08
+    power_shot_kill: 0.12

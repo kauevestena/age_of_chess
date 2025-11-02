@@ -1,0 +1,11 @@
+pettingzoo>=1.24.0
+numpy>=1.24
+pydantic>=2.7
+pyyaml>=6.0
+
+pygame>=2.5
+
+stable-baselines3>=2.3.0
+sb3-contrib>=2.3.0
+
+matplotlib>=3.8
