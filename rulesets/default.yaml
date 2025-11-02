@@ -123,6 +123,7 @@ game:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         max_steps: 1
       abilities: []
+      capture: "melee"
       capture_ends_game: true
       value: 100
   stacking:

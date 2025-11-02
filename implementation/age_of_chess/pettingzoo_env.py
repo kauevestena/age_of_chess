@@ -30,6 +30,7 @@ class RawAgeOfChess(AECEnv):
         self.truncations = {a: False for a in AGENTS}
         self.infos = {a: {} for a in AGENTS}
         self.agent_selection = "north"
+        self._cumulative_rewards = {a: 0.0 for a in AGENTS}
         self._action_spaces = {a: spaces.Discrete(ACTION_SPACE_SIZE) for a in AGENTS}
         self._observation_spaces = {a: spaces.Box(0, 1, shape=(12,8,8), dtype=np.int8) for a in AGENTS}
         self.history: List[Dict[str,Any]] = []  # record moves/events
@@ -54,6 +55,7 @@ class RawAgeOfChess(AECEnv):
             self.terminations[a] = False
             self.truncations[a] = False
             self.infos[a] = {"action_mask": self.engine.action_mask()}
+            self._cumulative_rewards[a] = 0.0
         self.agent_selection = "north"
         self.history = []
 
@@ -85,7 +87,7 @@ class RawAgeOfChess(AECEnv):
             self.rewards[loser] += float(self.rewards_cfg.get("loss", -1.0))
             self._accumulate_rewards()
 
-        def _apply_event_rewards(self, actor: str, event: dict):
+    def _apply_event_rewards(self, actor: str, event: dict):
         events_cfg = self.rewards_cfg.get("events", {})
         penalties = events_cfg.get("penalties", {})
         opp = "south" if self.agent_selection == "north" else "north"

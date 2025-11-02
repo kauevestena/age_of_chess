@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Ensure repository root is on sys.path when running this script directly.
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 import pygame
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 from implementation.age_of_chess.env import Engine
@@ -78,7 +85,6 @@ def draw_board(screen, env, show_legal=False):
                 pygame.draw.circle(screen, COLORS["convert"], (cx, cy), 12, 2)
 
 def draw_labels(screen):
-    import pygame
     font = pygame.font.SysFont("arial", 14)
     files = "abcdefgh"
     ranks = "87654321"
@@ -109,6 +115,8 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     agent = env.agent_selection
+                    if env.terminations.get(agent) or env.truncations.get(agent):
+                        continue
                     mask = env.infos[agent]["action_mask"]
                     legal_idxs = [i for i,m in enumerate(mask) if m==1]
                     if legal_idxs:
@@ -120,6 +128,9 @@ def main():
                     act = greedy.select(engine)
                     if act is not None:
                         idx = encode_action(*act)
+                        agent = env.agent_selection
+                        if env.terminations.get(agent) or env.truncations.get(agent):
+                            continue
                         env.step(idx)
                         selected = None
                 if event.key == pygame.K_l:
@@ -144,9 +155,10 @@ def main():
                     if candidates:
                         # if multiple types (e.g., move vs melee), choose melee > convert > ranged > move priority
                         best = sorted(candidates, key=lambda a: {1:0,3:1,2:2,0:3}[a[5]])[0]
-                        from implementation.age_of_chess.utils import encode_action
                         idx = encode_action(*best)
-                        env.step(idx)
+                        agent = env.agent_selection
+                        if not (env.terminations.get(agent) or env.truncations.get(agent)):
+                            env.step(idx)
                     selected = None
 
         # draw
@@ -155,7 +167,6 @@ def main():
         # selection highlight
         if selected is not None:
             sr, sc = selected
-            import pygame
             pygame.draw.rect(screen, (20,200,20), (sc*TILE+4, sr*TILE+4, TILE-8, TILE-8), 2)
         pygame.display.flip()
         clock.tick(30)
