@@ -8,6 +8,20 @@ Partial stack attacks leave a surviving attacker at its origin. Commander conver
 is forbidden. The third occurrence of a position is a draw. The rules schema and
 combat table are validated; unsupported settings fail instead of being ignored.
 
+## Browser game
+
+The [medieval browser client](web/README.md) provides solo play against three AI
+levels, local two-player battles, a guided tutorial, original illustrated units,
+animated combat, an original soundtrack, save/load and battle review. Gameplay
+runs entirely in the browser and is packaged for GitHub Pages.
+
+```bash
+node web/scripts/serve.mjs
+```
+
+Open `http://127.0.0.1:4173/age_of_chess/`. See the web README for Pages setup and
+browser validation. The Python research environment remains available below.
+
 ## Install and play
 
 Always use a local virtual environment:
