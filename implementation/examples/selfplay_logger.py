@@ -40,6 +40,7 @@ def main():
     jsonl_path = os.path.join(FILES_DIR, f"game_{ts}.jsonl")
     pgn_path = os.path.join(FILES_DIR, f"game_{ts}.aocpgn")
 
+    os.makedirs(FILES_DIR, exist_ok=True)
     with open(jsonl_path, "w") as jf, open(pgn_path,"w") as pf:
         move_no = 1
         while True:
@@ -58,8 +59,8 @@ def main():
             else:
                 pf.write(f"{pretty_move(event)}\n")
                 move_no += 1
-            if env.terminations["north"] and env.terminations["south"]:
-                pf.write(f"Result: rewards={env.rewards}\n")
+            if env.unwrapped.engine.state.done:
+                pf.write(f"Result: winner={engine.state.winner}, reason={engine.state.reason}\n")
                 break
     print("Wrote:", jsonl_path, pgn_path)
 

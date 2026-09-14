@@ -8,7 +8,7 @@ from implementation.age_of_chess.agents import GreedyAgent
 def legal_to_index(engine: Engine, action):
     fr,fc,slot, tr,tc,atype = action
     from implementation.age_of_chess.utils import encode_action
-    return encode_action(fr,fc,slot,atype,tr,tc)
+    return encode_action(fr,fc,slot,tr,tc,atype)
 
 def main():
     env = age_of_chess_v0(ruleset_path="rulesets/default.yaml")
@@ -31,8 +31,9 @@ def main():
             idx = legal_to_index(engine, act_tuple)
             env.step(idx)
             steps += 1
-            if env.terminations["north"] and env.terminations["south"]:
-                print(f"Episode {ep+1} finished in {steps} steps. Rewards:", env.rewards)
+            if env.unwrapped.engine.state.done:
+                state = env.unwrapped.engine.state
+                print(f"Episode {ep+1}: {steps} plies, winner={state.winner}, reason={state.reason}")
                 break
 
 if __name__ == "__main__":

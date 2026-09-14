@@ -93,7 +93,7 @@ def draw_labels(screen):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((W,H))
-    pygame.display.set_caption("Age of Chess – Viewer (Click: select/move, TAB: toggle slot, L: legal, G: greedy, SPACE: random)")
+    pygame.display.set_caption("Age of Chess – Viewer (Click: select/move, TAB: toggle slot, L: legal, G: greedy, SPACE: random; A: auto, M: move/melee, R: ranged, C: convert)")
     clock = pygame.time.Clock()
     env = age_of_chess_v0(ruleset_path="rulesets/default.yaml")
     env.reset()
@@ -101,6 +101,7 @@ def main():
     show_legal = True
     selected = None  # (r,c)
     selected_slot = 0  # 0=top,1=bottom
+    action_mode = None  # A=auto, M=move/melee, R=ranged, C=conversion
 
     running = True
     while running:
@@ -108,6 +109,10 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_a: action_mode = None
+                if event.key == pygame.K_m: action_mode = "melee"
+                if event.key == pygame.K_r: action_mode = "ranged"
+                if event.key == pygame.K_c: action_mode = "convert"
                 if event.key == pygame.K_SPACE:
                     agent = env.agent_selection
                     if env.terminations.get(agent) or env.truncations.get(agent):
@@ -147,15 +152,20 @@ def main():
                     # attempt to find a legal action matching selection -> (r,c) to (r2,c2)
                     fr, fc = selected
                     candidates = [a for a in legal if a[0]==fr and a[1]==fc and a[2]==selected_slot and a[3]==r and a[4]==c]
+                    allowed_types = {None: (0, 1, 2, 3), "melee": (0, 1), "ranged": (2,), "convert": (3,)}
+                    candidates = [a for a in candidates if a[5] in allowed_types[action_mode]]
                     if candidates:
-                        # if multiple types (e.g., move vs melee), choose melee > convert > ranged > move priority
-                        best = sorted(candidates, key=lambda a: {1:0,3:1,2:2,0:3}[a[5]])[0]
+                        # Auto prefers abilities; M/R/C lets the player choose explicitly.
+                        best = sorted(candidates, key=lambda a: {2:0,3:1,1:2,0:3}[a[5]])[0]
                         idx = encode_action(*best)
                         agent = env.agent_selection
                         if not (env.terminations.get(agent) or env.truncations.get(agent)):
                             env.step(idx)
                     selected = None
 
+        state = env.unwrapped.engine.state
+        status = f"{state.winner or 'unresolved'}: {state.reason}" if state.done else f"{state.to_move} to move"
+        pygame.display.set_caption(f"Age of Chess | {status} | mode: {action_mode or 'auto'} (A/M/R/C)")
         # draw
         draw_board(screen, env, show_legal=show_legal)
         draw_labels(screen)

@@ -1,10 +1,7 @@
-from __future__ import annotations
-from pettingzoo.utils.conversions import aec_to_parallel
-from .pettingzoo_env import age_of_chess_v0
+"""Sequential board updates cannot safely use PettingZoo's cycle conversion."""
 
-def age_of_chess_parallel_v0(ruleset_path: str):
-    """
-    Returns a Gymnasium-parallel-style env by converting the AEC env.
-    Useful for Stable-Baselines3 and other single-agent tooling expecting ParallelEnv.
-    """
-    return aec_to_parallel(age_of_chess_v0(ruleset_path))
+def age_of_chess_parallel_v0(ruleset_path="rulesets/default.yaml"):
+    raise NotImplementedError(
+        "Age of Chess is sequential. Use age_of_chess_v1 for AEC or "
+        "AOCSingleAgentSelfPlayEnv for Gym/SB3; aec_to_parallel is not valid here."
+    )

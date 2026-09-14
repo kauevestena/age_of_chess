@@ -1,1 +1,1 @@
-from .pettingzoo_env import age_of_chess_v0
+from .pettingzoo_env import age_of_chess_v0, age_of_chess_v1

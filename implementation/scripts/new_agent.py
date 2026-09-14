@@ -82,7 +82,7 @@ except Exception as e:
 from implementation.age_of_chess.sb3_env import AOCSingleAgentSelfPlayEnv
 
 def mask_fn(env):
-    return env.get_action_mask()
+    return env.unwrapped.get_action_mask()
 
 def main():
     env = AOCSingleAgentSelfPlayEnv(\"rulesets/default.yaml\")
@@ -124,7 +124,7 @@ python implementation/agents/{agent_slug}/train.py
 ```bash
 # copy or link your checkpoint into models/
 cp implementation/agents/{agent_slug}/checkpoints/*.zip models/
-python implementation/league/round_robin.py --games 6
+python -m implementation.league.round_robin --games 6
 ```
 
 ## Notes

@@ -1,203 +1,121 @@
-# age_of_chess
+# Age of Chess – Warfare
 
-A PettingZoo-compatible research environment for **Age of Chess – Warfare**, a tactical chess-variant with stacking, ranged attacks, conversion, and asymmetric matchups.
+A simulator-first tactical chess variant with stacking, ranged attacks, conversion,
+class counters and capture-the-Commander victory. See [the complete rules](rulesets/RULES.md).
 
-- 🔧 **Simulator-first**: rules in YAML, auto-loaded by the engine
-- 🤝 **PettingZoo AEC API** for multi-agent self-play
-- 🧪 **Examples**: random self-play & RLlib training scaffold
-- 📊 **Balance probes**: hooks for winrates, game length, K/D per class
+**Rules v2:** Pikeman beats Archer in melee; Archer can kill Pikeman at range.
+Partial stack attacks leave a surviving attacker at its origin. Commander conversion
+is forbidden. The third occurrence of a position is a draw. The rules schema and
+combat table are validated; unsupported settings fail instead of being ignored.
 
-> **Status:** initial research scaffold. Core rules are implemented minimally to enable fast iteration. Expect to refine movegen/combat as playtests evolve.
+## Install and play
 
-## Install
+Always use a local virtual environment:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-## Quick start
-
-```bash
 python implementation/examples/random_selfplay.py
+python implementation/examples/greedy_selfplay.py
+python implementation/examples/gui_viewer.py
 ```
 
-You should see a few games of random self-play with summaries.
+GUI: click a source and destination; **TAB** selects the other stack slot,
+**L** toggles legal overlays, **G** plays Greedy, **SPACE** plays a random legal move.
+**A** selects automatic action choice, **M** move/melee, **R** ranged, **C** conversion.
 
-## Folder layout
-
-```
-age_of_chess/
-├─ README.md
-├─ agents.md
-├─ rulesets/
-│  ├─ RULES.md
-│  └─ default.yaml
-└─ implementation/
-   ├─ age_of_chess/
-   │  ├─ __init__.py
-   │  ├─ pettingzoo_env.py
-   │  ├─ env.py
-   │  ├─ game_state.py
-   │  ├─ rules_loader.py
-   │  ├─ movegen.py
-   │  ├─ combat.py
-   │  └─ utils.py
-   ├─ examples/
-   │  ├─ random_selfplay.py
-   │  └─ rllib_train.py
-   └─ tests/
-      ├─ test_rules_load.py
-      └─ test_env_smoke.py
-```
-
-## PettingZoo usage
+## Direct engine and PettingZoo
 
 ```python
-from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
+from implementation.age_of_chess.env import Engine
 
-env = age_of_chess_v0(ruleset_path="rulesets/default.yaml")
-env.reset()
+engine = Engine("rulesets/default.yaml")
+action = engine.legal_actions()[0]
+event = engine.apply(action)
+```
+
+```python
+from implementation.age_of_chess.pettingzoo_env import age_of_chess_v1
+
+env = age_of_chess_v1("rulesets/default.yaml", max_plies=512)
+env.reset(seed=7)
 for agent in env.agent_iter():
-    obs, reward, termination, truncation, info = env.last()
-    action = env.action_space(agent).sample()
+    obs, reward, terminated, truncated, info = env.last()
+    action = None if terminated or truncated else env.action_space(agent).sample(info["action_mask"])
     env.step(action)
 ```
 
-## Roadmap
+The canonical tuple is `(from_row, from_col, slot, to_row, to_col, kind)` everywhere.
+`kind` is move/stack=0, melee=1, ranged=2, conversion=3. Use `encode_action(*action)`
+for the discrete interface. Illegal direct-engine actions raise before mutation;
+illegal training-interface actions forfeit, without silently executing another move.
 
-- Expand movegen to cover all edge cases (power-shot LoS, priestess adjacency checks).
-- Full combat matrix coverage vs stacks (now seeded with defaults).
-- RLlib config example and AlphaZero-style trainer.
-- GUI (boardgame.io) for human playtests.
+The observation has shape `(27, 8, 8)` and dtype `float32`: own top/bottom class
+planes (12), opponent top/bottom planes (12), own North-direction flag, side-to-move
+flag, and normalized current-position occurrence count. Coordinates are **absolute**,
+matching action IDs. Full repetition history is available in `info['position_counts']`;
+the observation alone does not encode every past position. Inactive/finished agent
+masks contain only zeros. Rewards are per-step, terminal-only, and zero-sum.
 
-### More examples
+Use `engine.state.winner`, `reason`, `terminated` and `truncated` to adjudicate.
+A ply cap is unresolved truncation, not a draw or a reward-based winner. Terminal
+rewards do not pay capture/conversion bonuses that can be farmed in a loop.
+
+The old `age_of_chess_v0` name remains an import alias only. Old YAML files and
+checkpoints need migration/retraining: the action layout and observation changed.
+Do not compare old reward-adjudicated league records with v2 results.
+
+## Training and evaluation
+
+`AOCSingleAgentSelfPlayEnv` keeps one learning side per episode, against a random
+or Greedy opponent, or a supplied frozen-opponent callable. A step includes the
+opponent's reply. Training one policy on alternating actors within a single-agent
+step is no longer used. Default learning colors are seeded-random per episode.
 
 ```bash
-python implementation/examples/greedy_selfplay.py
+python implementation/examples/sb3_train_maskable_ppo.py
+python implementation/examples/sb3_train_a2c.py
+python implementation/examples/sb3_train_maskable_ppo_league.py
+python -m implementation.league.round_robin --games 6 --seed 7
+python -m implementation.league.elo_timeline
+python -m implementation.league.report
 ```
 
+MaskablePPO is preferred; the unmasked A2C baseline may repeatedly forfeit by
+sampling illegal actions. The league loads both flat and tensor v2 checkpoints.
+It records draws and truncations distinctly and excludes unresolved/legacy records
+from ratings. Greedy uses seeded random tie breaks, not coordinate-order ties.
 
-## Configurable rewards
-Adjust `rewards` in `rulesets/default.yaml`:
-```yaml
-rewards:
-  win: 1.0
-  loss: -1.0
-  draw: 0.0
-  illegal: -0.01
-  step: 0.0
-```
+Age of Chess updates the board after **each** player's action. It cannot safely be
+converted to a simultaneous ParallelEnv with `aec_to_parallel`; use the AEC or Gym
+interface. The former parallel helper now raises an explanatory error.
 
-## Minimal-loss rule
-Enabled via YAML at `game.turn.minimal_loss_rule.enabled`. When **all** legal moves lose material this turn, the engine filters to moves with the **smallest own-loss**, then prefers those that inflict more opponent loss.
+## Validation and reproducible balance probes
 
-## GUI viewer
-Install pygame and run:
 ```bash
-pip install pygame
-python implementation/examples/gui_viewer.py
+pip install pytest
+python -m pytest -q
+python -m implementation.review.balance --pairs 1500 --search-pairs 250 --workers 4
 ```
-Controls: **SPACE** random-step, **G** Greedy-step.
 
+The tests include the corrected melee counters, stack conservation, movement and
+ability edge cases, all 32,768 action IDs, draw detection, atomic illegal actions,
+PettingZoo/Gym API checks, league adjudication, and a short MaskablePPO train/save/load
+cycle when SB3 is installed. The rulesheet combat table is checked against YAML.
 
-## Event-based rewards (YAML)
-You can shape rewards for events under `rewards.events` in the ruleset YAML, e.g. capture, conversion, ranged/power-shot kills.
+Balance results, methodology and limitations live in `implementation/review/`.
+Weak-agent win rates are measurements for those policies, not proof of expert-play
+balance. The minimal-loss restriction uses immediate own deaths and its explicit
+preservation order; AI evaluation values are independently configurable.
 
-## Logs export
-Run a greedy-vs-greedy match and export JSONL and PGN-like logs:
+## Logs and agent development
+
 ```bash
 python implementation/examples/selfplay_logger.py
-```
-Outputs go to `logs/`.
-
-
-## Loss penalties (YAML)
-Under `rewards.events.penalties`, you can penalize specific losses:
-```yaml
-rewards:
-  events:
-    penalties:
-      unit_loss_default: -0.02
-      king_loss: -0.5
-      death_on_charge: -0.05  # cavalry dies when charging pikes
-```
-
-## Parallel API (for SB3 etc.)
-Get a parallel-converted env:
-```python
-from implementation.age_of_chess.parallel_env import age_of_chess_parallel_v0
-penv = age_of_chess_parallel_v0("rulesets/default.yaml")
-```
-
-
-## SB3 training (self-play)
-MaskablePPO (with action masks):
-```bash
-pip install stable-baselines3 sb3-contrib
-python implementation/examples/sb3_train_maskable_ppo.py
-```
-
-A2C baseline:
-```bash
-python implementation/examples/sb3_train_a2c.py
-```
-
-## GUI click-to-move
-- Click a piece to select; click a target square to act.
-- **TAB** toggles slot (top/bottom) when selecting a stacked square.
-- **L** toggles legal overlays; **G** greedy move; **SPACE** random legal.
-
-## Replay viewer
-```bash
-python implementation/examples/selfplay_logger.py         # first, generate a log
 python implementation/examples/replay_viewer.py logs/game_YYYYMMDD_HHMMSS.jsonl
-```
-
-
-## Round-robin league
-Run a tournament among all available agents (Greedy, Random, and any SB3 models in `models/`):
-```bash
-python implementation/league/round_robin.py --games 6
-```
-Outputs standings to `logs/league/standings_*.{csv,md}` and raw match results to `logs/league/league_*.jsonl`.
-SB3 agents are included automatically if `stable-baselines3` and/or `sb3-contrib` are installed and `.zip` models are present.
-
-
-## League Elo & Heatmap
-After running a league:
-- Elo with 95% CIs is included in `standings_*.md`.
-- A head-to-head winrate **heatmap** is saved as `heatmap_*.png` in `logs/league/`.
-
-## SB3 training with checkpoints + mini-league
-Train MaskablePPO and auto-run a tiny league at checkpoints:
-```bash
-python implementation/examples/sb3_train_maskable_ppo_league.py
-```
-Checkpoints are saved to `models/checkpoints/` and copied to `models/` for discovery.
-
-
-## Elo timeline chart
-After you have multiple league runs in `logs/league/league_*.jsonl`, build the timeline:
-```bash
-python implementation/league/elo_timeline.py
-```
-This writes:
-- `logs/league/elo_timeline.csv` (ratings per agent per run)
-- `logs/league/elo_timeline.png` (single plot of Elo vs time per agent)
-
-
-## HTML league report
-Create a self-contained HTML summary with standings, heatmap, and timeline:
-```bash
-python implementation/league/report.py
-```
-The output is written to `logs/league/report_latest.html` (images inlined, so you can share the single file).
-
-
-## New agent scaffold
-Create a new agent package (uses only local files under `implementation/agents/<name>/`):
-```bash
 python implementation/scripts/new_agent.py MyAgent
 ```
-Then train/evaluate per the docs in `agents.md`.
+
+Put agent code, configs and checkpoints under `implementation/agents/<name>/`.
+See [agents.md](agents.md) for development conventions.

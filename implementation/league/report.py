@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple
 
-from .elo import compute_elo, rating_ci
+from .elo import compute_elo, rating_ci, score_for_north
 
 LEAGUE_DIR = Path("logs/league")
 
@@ -28,13 +28,14 @@ def _b64(path: Path) -> str | None:
         return base64.b64encode(f.read()).decode("ascii")
 
 def _standings_table(results: List[dict]) -> List[Tuple[str,float,float,Tuple[float,float]]]:
+    results = [r for r in results if score_for_north(r) is not None]
     # recompute points, Elo and CI for robust single-source
     names = set()
     for r in results:
         names.add(r["white"]); names.add(r["black"])
     points = {n: 0.0 for n in names}
     for r in results:
-        if r["winner"] is None:
+        if r["winner"] == "draw":
             points[r["white"]] += 0.5; points[r["black"]] += 0.5
         elif r["winner"] == "north":
             points[r["white"]] += 1.0
@@ -86,7 +87,7 @@ def generate(out_path: Path | None = None) -> Path:
     def esc(x): return x.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
     # Recreate standings from rows
-    table_html = "<table><thead><tr><th>Agent</th><th>Points</th><th>Elo</th><th>95% CI</th></tr></thead><tbody>"
+    table_html = "<table><thead><tr><th>Agent</th><th>Points</th><th>Elo</th><th>Heuristic interval</th></tr></thead><tbody>"
     for name, pts, elo, (lo, hi) in rows:
         table_html += f"<tr><td>{esc(name)}</td><td style='text-align:right'>{pts:.2f}</td><td style='text-align:right'>{elo:.0f}</td><td style='text-align:right'>{lo:.0f}–{hi:.0f}</td></tr>"
     table_html += "</tbody></table>"
@@ -115,6 +116,7 @@ code {{ background: #f6f8fa; padding: 2px 4px; border-radius: 4px; }}
 
 <div class="section">
   <h2>Standings (latest run)</h2>
+  <p>Unresolved, truncated or legacy records excluded: {sum(score_for_north(r) is None for r in results)} / {len(results)}.</p>
   {table_html}
 </div>
 

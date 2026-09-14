@@ -4,22 +4,22 @@ This project includes simple baselines, a self‑play Gym wrapper, SB3 training 
 
 ## Built‑in baselines
 - **Random** — picks a random *legal* action using the action mask.
-  - Source: `implementation/age_of_chess/agents.py` (class `RandomAgent` if you add one; examples use inline random with mask)
+  - Source: `implementation/age_of_chess/agents.py` (class `RandomAgent`; examples also use random sampling with the mask)
 - **Greedy Heuristic** — ranks legal actions by short‑term material swing (using piece values in the engine).
   - Source: `implementation/age_of_chess/agents.py` (`GreedyAgent`)
   - Demo: `implementation/examples/greedy_selfplay.py`
 
-> Both baselines rely on the env’s **action mask** to avoid illegal actions. Illegal actions (when they happen) incur a configurable penalty (`rewards.illegal` in YAML).
+> Both baselines rely on the env’s **action mask** to avoid illegal actions. Illegal training actions forfeit the game. The engine rejects illegal actions atomically.
 
 ## PettingZoo AEC env
-- Entry point: `implementation/age_of_chess/pettingzoo_env.py` → `age_of_chess_v0(...)`
-- Observation: `(12, 8, 8)` planes (channel‑first)
-- Discrete action space encodes `(from_row, from_col, slot, move_type, to_row, to_col)`
+- Entry point: `implementation/age_of_chess/pettingzoo_env.py` → `age_of_chess_v1(...)`
+- Observation: `(27, 8, 8)` planes (channel‑first)
+- Discrete action space encodes `(from_row, from_col, slot, to_row, to_col, move_type)`
 - `infos[agent]["action_mask"]` is provided on every turn.
 
 ## Self‑play wrapper for SB3
 - `implementation/age_of_chess/sb3_env.py` → `AOCSingleAgentSelfPlayEnv`
-  - Presents the game as a **single‑agent self‑play** Gymnasium env (the single policy alternates sides).
+  - Keeps a **single learning side per episode** against an explicit opponent; each step includes its reply.
   - Compatible with **ActionMasker** (`sb3_contrib` MaskablePPO). Use `env.get_action_mask()`.
 
 ### Training scripts
@@ -54,13 +54,13 @@ python implementation/examples/sb3_train_maskable_ppo_league.py
 ### Quick eval
 ```bash
 # Play a league among Greedy, Random, and all models in ./models
-python implementation/league/round_robin.py --games 6
+python -m implementation.league.round_robin --games 6
 
 # Build Elo timeline
-python implementation/league/elo_timeline.py
+python -m implementation.league.elo_timeline
 
 # Generate HTML report
-python implementation/league/report.py
+python -m implementation.league.report
 ```
 
 ## Logging & Replay
@@ -74,12 +74,17 @@ python implementation/league/report.py
   - Click‑to‑move, slot toggle (**TAB**), legal‑move overlays (**L**), greedy step (**G**), random step (**SPACE**).
   - Overlays are tinted by **acting piece type**.
 
-## Rewards & penalties (YAML)
-- Global rewards: `win`, `loss`, `draw`, `illegal`, `step`
-- Event rewards: `rewards.events.capture`, `conversion`, `ranged_kill`, `power_shot_kill` (+ per‑attacker bonuses)
-- Loss penalties: `rewards.events.penalties.{unit_loss_default, king_loss, death_on_charge}`
+## Rewards and versioning
 
-Tweak them in `rulesets/default.yaml` to shape training or balance tests.
+Rewards are terminal-only and zero-sum: win +1, loss −1, draw 0. Conversions and
+captures do not pay bonuses. A ply cap is truncation, not a draw or a reward win.
+Old 12-plane checkpoints and old action IDs are incompatible and must be retrained.
+Use `engine.state.winner` and `reason`, never reward totals, for adjudication.
+The 27-plane observation encodes both slots; full repetition history is in infos.
+
+Core `RandomAgent`/`GreedyAgent` receive an Engine and return action tuples. The
+league's policy interface receives the AEC environment and returns an encoded ID.
+The explicit opponent callable for Gym receives an Engine and returns a tuple.
 
 ## Adding New Agents
 
@@ -136,12 +141,12 @@ To participate in the round‑robin league, either:
 
 Then run:
 ```bash
-python implementation/league/round_robin.py --games 4
+python -m implementation.league.round_robin --games 4
 ```
 
 ### 4) Tips
 - Use the **action mask** (`infos[agent]["action_mask"]`) to avoid illegal moves.
-- Consider reading `rulesets/default.yaml` to align heuristics with event rewards/penalties.
+- Consider reading `rulesets/default.yaml` to understand combat, movement and evaluation values.
 - Log your games with `implementation/examples/selfplay_logger.py` and replay them with `implementation/examples/replay_viewer.py`.
 
 
