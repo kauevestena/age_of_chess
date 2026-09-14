@@ -16,6 +16,11 @@ def position(rules):
         for owner, square in (("north", (7, 7)), ("south", (0, 7))):
             if not any(u and u.code == "K" and u.side == owner for row in board.grid for sq in row for u in (sq.top, sq.bottom)):
                 board.grid[square[0]][square[1]].add_unit(Unit("K", owner))
+            # Movement/combat studies need a live army under the lone-Commander rule.
+            if sum(u is not None and u.side == owner for row in board.grid for sq in row for u in (sq.top, sq.bottom)) == 1:
+                back = 7 if owner == "north" else 0
+                col = next(c for c in range(6, -1, -1) if board.grid[back][c].is_empty())
+                board.grid[back][col].add_unit(Unit("P", owner))
         engine = Engine(rules=rules)
         state = GameState(board, to_move=side)
         if settle: engine.set_state(state)

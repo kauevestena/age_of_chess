@@ -39,9 +39,16 @@ function priority(state, a) {
     dst = state.board[rr * 8 + cc];
   const val = (u) => (u ? RULES.pieces[code(u)].value * 100 : 0);
   if (kind === 3) return 2 * val(dst[0]) + 15;
-  if (kind === 2) return val(dst[0]) + 10;
+  if (kind === 2)
+    return val(dst[0]) - (code(dst[0]) === "B" ? val(actor) : 0) + 10;
   if (kind === 1) {
-    const [alive, top, bottom] = melee(actor, ...dst);
+    const [alive, top, bottom] = melee(
+      actor,
+      dst[0],
+      dst[1],
+      r * 8 + c,
+      rr * 8 + cc,
+    );
     return (
       (top ? 0 : val(dst[0])) +
       (bottom ? 0 : val(dst[1])) -

@@ -9,7 +9,7 @@ export const squareName = (index) =>
   "abcdefgh"[index % 8] + (8 - Math.floor(index / 8));
 export const actionKey = (action) => action.join(",");
 export const positionKey = (state) =>
-  `${state.turn}|${state.board.map((sq) => sq.join(",")).join(";")}`;
+  `${state.turn}|${state.retreats.join(",")}|${state.board.map((sq) => sq.join(",")).join(";")}`;
 const inside = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
 const directions = [-1, 0, 1].flatMap((r) =>
   [-1, 0, 1].filter((c) => r || c).map((c) => [r, c]),
@@ -37,10 +37,11 @@ export function cloneState(state) {
     ...state,
     board: state.board.map((s) => [...s]),
     counts: { ...state.counts },
+    retreats: [...state.retreats],
   };
 }
 
-export function studyState(board, turn = 1) {
+export function studyState(board, turn = 1, retreats = [0, 0]) {
   const state = {
     board: board.map((s) => [...s]),
     turn,
@@ -48,6 +49,7 @@ export function studyState(board, turn = 1) {
     winner: null,
     reason: null,
     counts: {},
+    retreats: [...retreats],
   };
   validateState(state);
   priestessDeaths(state, []);
@@ -64,6 +66,13 @@ export function validateState(s) {
     s.board.length !== 64
   )
     throw Error("Invalid board");
+  if (
+    !Array.isArray(s.retreats) ||
+    s.retreats.length !== 2 ||
+    s.retreats.some((n) => !Number.isInteger(n) || n < 0 || n > 3) ||
+    s.retreats.every((n) => n === 3)
+  )
+    throw Error("Invalid Commander retreat counts");
   const special = {};
   for (const sq of s.board) {
     if (
@@ -81,12 +90,35 @@ export function validateState(s) {
   return true;
 }
 
-export function melee(actor, top, bottom) {
+export function attackSector(from, to, defender) {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from === to)
+    throw Error("Same-type melee requires source and target squares");
+  const forward = (Math.floor(to / 8) - Math.floor(from / 8)) * side(defender),
+    right = ((from % 8) - (to % 8)) * side(defender);
+  return (forward > 0 ? 2 : forward < 0 ? 8 : 5) + Math.sign(right);
+}
+export const approachLabel = (sector) =>
+  sector === 2
+    ? "Guarded front"
+    : [1, 3].includes(sector)
+      ? "Front diagonal"
+      : [4, 6].includes(sector)
+        ? "Flank"
+        : "Rear";
+export const cavalryPassable = (square, owner) =>
+  !square.length || (square.length === 1 && side(square[0]) === owner);
+
+export function melee(actor, top, bottom, from, to) {
   const a = code(actor),
     d = code(top),
     b = bottom ? code(bottom) : null;
   if (side(actor) === side(top)) throw Error("Friendly melee");
   if (d === "K") return [true, false, !!bottom];
+  const result = RULES.combat.single[a][d];
+  if (result === "stance") {
+    const sector = attackSector(from, to, top);
+    return [![1, 2, 3].includes(sector), sector === 2, !!bottom];
+  }
   if (bottom)
     for (const match of [b, "*"]) {
       const rule = RULES.combat.stacks.find(
@@ -94,7 +126,6 @@ export function melee(actor, top, bottom) {
       );
       if (rule) return [...rule.outcome];
     }
-  const result = RULES.combat.single[a][d];
   if (result === "illegal") throw Error("Forbidden melee");
   return [result === "win", result === "lose", !!bottom];
 }
@@ -128,12 +159,12 @@ export function unfilteredActions(state) {
         const a = [r, c, slot, rr, cc, kind];
         actions.set(actionKey(a), a);
       };
-      const destination = (rr, cc) => {
+      const destination = (rr, cc, attackOnly = false) => {
         if (!inside(rr, cc)) return;
         const dst = state.board[rr * 8 + cc];
-        if (!dst.length || (side(dst[0]) === owner && dst.length === 1))
-          add(rr, cc, 0);
-        else if (
+        if (!dst.length || (side(dst[0]) === owner && dst.length === 1)) {
+          if (!attackOnly) add(rr, cc, 0);
+        } else if (
           side(dst[0]) !== owner &&
           RULES.combat.single[code(unit)][code(dst[0])] !== "illegal"
         )
@@ -144,7 +175,10 @@ export function unfilteredActions(state) {
           cc = c + dc;
         if (!inside(rr, cc)) continue;
         destination(rr, cc);
-        if (movement.max_steps === 2 && !state.board[rr * 8 + cc].length)
+        if (
+          movement.max_steps === 2 &&
+          cavalryPassable(state.board[rr * 8 + cc], owner)
+        )
           for (const [dr2, dc2] of dirs) destination(rr + dr2, cc + dc2);
       }
       let extra = [];
@@ -174,6 +208,27 @@ export function unfilteredActions(state) {
           [0, 1],
         ];
       for (const [dr, dc] of extra) destination(r + dr, c + dc);
+      const ahead = r - owner;
+      if (
+        inside(ahead, c) &&
+        state.board[ahead * 8 + c].length &&
+        side(state.board[ahead * 8 + c][0]) !== owner
+      ) {
+        destination(r, c - 1);
+        destination(r, c + 1);
+      }
+      for (const [dr, dc] of directions) {
+        const rr = r + dr,
+          cc = c + dc;
+        if (!inside(rr, cc)) continue;
+        destination(rr, cc, true);
+        if (
+          movement.max_steps === 2 &&
+          cavalryPassable(state.board[rr * 8 + cc], owner)
+        )
+          for (const [dr2, dc2] of directions)
+            destination(rr + dr2, cc + dc2, true);
+      }
       for (const ability of spec.abilities) {
         if (ability.name === "convert") {
           for (const [dr, dc] of directions) {
@@ -194,9 +249,9 @@ export function unfilteredActions(state) {
             !(sq.length === 2 && sq.every((u) => code(u) === "B"))
           )
             continue;
-          for (const dc of [-1, 0, 1])
+          for (const [dr, dc] of directions)
             for (let dist = 1; dist <= ability.range; dist++) {
-              const rr = r - owner * dist,
+              const rr = r + dr * dist,
                 cc = c + dc * dist;
               if (!inside(rr, cc)) break;
               const dst = state.board[rr * 8 + cc];
@@ -220,8 +275,16 @@ function ownDeaths(state, action) {
   const [r, c, slot, rr, cc, kind] = action,
     actor = state.board[r * 8 + c][slot];
   let arrives = kind === 0;
+  if (kind === 2 && code(state.board[rr * 8 + cc][0]) === "B") return ["B"];
   if (kind === 1) {
-    const [alive, top, bottom] = melee(actor, ...state.board[rr * 8 + cc]);
+    const dst = state.board[rr * 8 + cc];
+    const [alive, top, bottom] = melee(
+      actor,
+      dst[0],
+      dst[1],
+      r * 8 + c,
+      rr * 8 + cc,
+    );
     if (!alive) return [code(actor)];
     arrives = !top && !bottom;
   }
@@ -293,10 +356,23 @@ function priestessDeaths(state, losses) {
 function adjudicate(state) {
   const north = state.board.some((s) => s.includes(6)),
     south = state.board.some((s) => s.includes(-6));
+  const retreatLoser = state.retreats.findIndex(
+    (n) => n >= RULES.commander_retreat_limit,
+  );
+  const units = state.board.flat();
+  const loneNorth = units.filter((u) => u > 0).length === 1,
+    loneSouth = units.filter((u) => u < 0).length === 1;
   if (!north || !south) {
     state.winner = north ? 1 : south ? -1 : 0;
     state.reason =
       north || south ? "commander_capture" : "both_commanders_absent";
+  } else if (retreatLoser >= 0) {
+    state.winner = retreatLoser === 0 ? -1 : 1;
+    state.reason = "commander_retreat_forfeit";
+  } else if (loneNorth || loneSouth) {
+    state.winner = loneNorth && loneSouth ? 0 : loneNorth ? -1 : 1;
+    state.reason =
+      loneNorth && loneSouth ? "both_commanders_alone" : "lone_commander";
   } else if (!unfilteredActions(state).length) {
     state.winner = -state.turn;
     state.reason = "stagnation";
@@ -343,7 +419,9 @@ export function transition(state, action, trusted = false) {
     dst.push(...src.splice(slot, 1));
     event.moved = true;
   } else if (kind === 1) {
-    const [alive, top, bottom] = melee(actor, ...dst);
+    event.approach = attackSector(from, to, dst[0]);
+    event.stance = RULES.combat.single[code(actor)][code(dst[0])] === "stance";
+    const [alive, top, bottom] = melee(actor, dst[0], dst[1], from, to);
     event.survival = [alive, top, bottom];
     if (dst.length === 2 && !bottom) remove(dst, to, 1, "melee");
     if (!top) remove(dst, to, 0, "melee");
@@ -352,18 +430,30 @@ export function transition(state, action, trusted = false) {
       dst.push(...src.splice(slot, 1));
       event.moved = true;
     }
-  } else if (kind === 2) remove(dst, to, 0, "ranged");
-  else if (kind === 3) {
+  } else if (kind === 2) {
+    const returnsFire = code(dst[0]) === "B";
+    remove(dst, to, 0, "ranged");
+    if (returnsFire) {
+      remove(src, from, slot, "return_fire");
+      event.returnFire = true;
+    }
+  } else if (kind === 3) {
     event.converted = dst[0];
     dst[0] *= -1;
   }
   priestessDeaths(next, event.losses);
+  const retreatIndex = state.turn === 1 ? 0 : 1;
+  next.retreats[retreatIndex] =
+    code(actor) === "K" && event.moved && (rr - r) * state.turn > 0
+      ? next.retreats[retreatIndex] + 1
+      : 0;
   next.turn *= -1;
   next.ply++;
   const key = positionKey(next);
   next.counts[key] = (next.counts[key] || 0) + 1;
   adjudicate(next);
   event.winner = next.winner;
+  event.reason = next.reason;
   return { state: next, event };
 }
 
@@ -373,10 +463,12 @@ export function describeEvent(event) {
   if (event.kind === 3)
     return `${who} converts ${label(event.converted)} at ${destination}.`;
   if (event.kind === 2)
-    return `${who} fires at ${destination}. ${event.losses.map((l) => label(l.unit)).join(" and ")} falls.`;
+    return event.returnFire
+      ? `Archer fires at ${destination}. The defending Archer returns fire; both Archers fall.`
+      : `${who} fires at ${destination}. ${event.losses.map((l) => label(l.unit)).join(" and ")} ${event.losses.length === 1 ? "falls" : "fall"}.`;
   if (event.kind === 1) {
     const losses = event.losses.map((l) => label(l.unit)).join(" and ");
-    return `${who} attacks ${destination}. ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}`;
+    return `${who} attacks ${destination}.${event.stance ? ` ${approachLabel(event.approach)}: ${event.approach === 2 ? "defender holds" : [1, 3].includes(event.approach) ? "both fall" : "attacker wins"}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}`;
   }
   return `${who} ${event.defender.length ? "joins the formation at" : "advances to"} ${destination}.${event.losses.length ? " Opposing Priestesses fall together." : ""}`;
 }

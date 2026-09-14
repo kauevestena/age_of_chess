@@ -1,5 +1,11 @@
 import { unitSVG } from "./art.mjs";
-import { code, label, describeEvent } from "./engine.mjs";
+import {
+  code,
+  label,
+  describeEvent,
+  approachLabel,
+  cavalryPassable,
+} from "./engine.mjs";
 
 const STOP = Symbol("skip");
 function wait(ms, signal) {
@@ -174,18 +180,27 @@ export class CombatDirector {
       const frames = [{ transform: "translate(0,0)" }];
       if (
         code(event.actor) === "N" &&
-        Math.abs(event.action[0] - event.action[3]) === 2
+        Math.max(
+          Math.abs(event.action[0] - event.action[3]),
+          Math.abs(event.action[1] - event.action[4]),
+        ) === 2
       ) {
-        const [r, c, , , cc] = event.action,
-          midr = r - before.turn;
-        const midc = [c - 1, c, c + 1].find(
-          (m) =>
-            m >= 0 &&
-            m < 8 &&
-            Math.abs(cc - m) <= 1 &&
-            !before.board[midr * 8 + m].length,
-        );
-        if (midc !== undefined) {
+        const [r, c, , rr, cc] = event.action;
+        const midCell = [-1, 0, 1]
+          .flatMap((dr) => [-1, 0, 1].map((dc) => [r + dr, c + dc]))
+          .find(
+            ([mr, mc]) =>
+              mr >= 0 &&
+              mr < 8 &&
+              mc >= 0 &&
+              mc < 8 &&
+              Math.max(Math.abs(rr - mr), Math.abs(cc - mc)) === 1 &&
+              cavalryPassable(before.board[mr * 8 + mc], before.turn) &&
+              (event.kind === 1 ||
+                (mr === r - before.turn && rr === mr - before.turn)),
+          );
+        if (midCell) {
+          const [midr, midc] = midCell;
           const mid = document
             .querySelector(`[data-index="${midr * 8 + midc}"]`)
             .getBoundingClientRect();
@@ -227,6 +242,23 @@ export class CombatDirector {
         await wait(duration, this.abort.signal);
       }
     } else {
+      if (event.returnFire) {
+        this.animate(
+          source,
+          [
+            { filter: "brightness(1)" },
+            { filter: "brightness(1.8)" },
+            { filter: "brightness(1)" },
+          ],
+          500,
+        );
+        this.particles.burst(
+          from.x + from.width / 2 - canvasBox.x,
+          from.y + from.height / 2 - canvasBox.y,
+          "steel",
+          30,
+        );
+      }
       this.animate(
         target,
         [
@@ -269,7 +301,7 @@ export class CombatDirector {
       stage = document.querySelector("#encounter-stage"),
       phase = document.querySelector("#encounter-phase");
     document.querySelector("#encounter-title").textContent =
-      `${label(event.actor)} ${event.kind === 3 ? "conversion" : event.kind === 2 ? "volley" : "engagement"}`;
+      `${label(event.actor)} ${event.kind === 3 ? "conversion" : event.kind === 2 ? "volley" : "engagement"}${event.stance ? ` · ${approachLabel(event.approach)}` : ""}`;
     document.querySelector("#encounter-outcome").textContent = "";
     phase.textContent =
       event.kind === 3
@@ -352,7 +384,15 @@ export class CombatDirector {
       }
       await wait(140, this.abort.signal);
       for (let clash = 0; clash < 2; clash++) {
-        phase.textContent = clash ? "Steel answers steel" : "The first clash";
+        phase.textContent = event.stance
+          ? event.approach === 2
+            ? "The guarded line holds"
+            : event.approach <= 3
+              ? "Both lines strike together"
+              : "The exposed guard is breached"
+          : clash
+            ? "Steel answers steel"
+            : "The first clash";
         this.animate(
           a.querySelector(".weapon"),
           [
@@ -396,7 +436,36 @@ export class CombatDirector {
       );
       await wait(500, this.abort.signal);
       this.audio.effect("ranged");
-      phase.textContent = "The arrow finds its mark";
+      phase.textContent = event.returnFire
+        ? "The defending Archer returns fire"
+        : "The arrow finds its mark";
+      if (event.returnFire) {
+        this.animate(
+          d.querySelector(".weapon"),
+          [{ transform: "rotate(9deg)" }, { transform: "rotate(0)" }],
+          430,
+        );
+        const answer = document.createElement("div");
+        answer.className = "battle-arrow return-arrow";
+        answer.style.left = "65%";
+        stage.append(answer);
+        this.animate(
+          answer,
+          [
+            { transform: "translate(0,0) rotate(180deg)", opacity: 1 },
+            {
+              transform: `translate(${-stageWidth * 0.35}px,0) rotate(180deg)`,
+              opacity: 1,
+              offset: 0.85,
+            },
+            {
+              transform: `translate(${-stageWidth * 0.37}px,0) rotate(180deg)`,
+              opacity: 0,
+            },
+          ],
+          430,
+        );
+      }
       const arrows =
         code(event.actor) === "B" && !"BPQ".includes(code(event.defender[0]))
           ? 2
@@ -430,6 +499,13 @@ export class CombatDirector {
         "dust",
         30,
       );
+      if (event.returnFire)
+        this.particles.burst(
+          a.offsetLeft + 70,
+          this.particles.height * 0.56,
+          "dust",
+          30,
+        );
     } else {
       this.audio.effect("convert");
       const ring = document.createElement("div");
@@ -472,7 +548,8 @@ export class CombatDirector {
           ? "The charge is repelled"
           : "The engagement is decided";
       const dying = [];
-      if (event.kind === 1 && !event.survival[0]) dying.push(a);
+      if (event.returnFire || (event.kind === 1 && !event.survival[0]))
+        dying.push(a);
       if (event.kind === 2 || (event.kind === 1 && !event.survival[1]))
         dying.push(d);
       if (b && event.kind === 1 && !event.survival[2]) dying.push(b);

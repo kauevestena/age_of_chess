@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { spectatorChecks } from "./spectator.mjs";
+import { createRecord, SAVE_KEY } from "../src/records.mjs";
 const require = createRequire(import.meta.url),
   { chromium } = require("playwright");
 const root = resolve(fileURLToPath(new URL("..", import.meta.url))),
@@ -224,6 +225,92 @@ try {
     ),
     "completed conversion cinematic updates ownership",
   );
+  // New rules are learned through the real board and cinematic flow.
+  await page.locator("#next-lesson").click();
+  check(
+    (await cell(page, 36).locator(".facing-indicator").textContent()) === "↑",
+    "Azure facing arrow",
+  );
+  check(
+    (await cell(page, 28).locator(".facing-indicator").textContent()) === "↓",
+    "Ember facing arrow",
+  );
+  await cell(page, 28).click();
+  check(
+    (await page.locator("#modal-content").textContent()).includes(
+      "Guarded front",
+    ),
+    "stance in attack preview",
+  );
+  await page.getByRole("button", { name: /Melee attack/ }).click();
+  await page.locator("#battle-dialog").waitFor({ state: "visible" });
+  check(
+    (await page.locator("#encounter-title").textContent()).includes(
+      "Guarded front",
+    ),
+    "stance in cinematic",
+  );
+  await page.waitForTimeout(1300);
+  await page.screenshot({ path: resolve(out, "combat-guarded-front.png") });
+  await waitIdle(page);
+  check(
+    (await cell(page, 36).getAttribute("aria-label")).includes("empty") &&
+      (await cell(page, 28).locator(".stack-badge").count()) === 1,
+    "guard kills attacker and preserves formation",
+  );
+  await page.locator("#next-lesson").click();
+  check(
+    !(await cell(page, 43).getAttribute("class")).includes("legal-target"),
+    "full formation blocks sidestep",
+  );
+  await cell(page, 45).click();
+  await page.getByRole("button", { name: /Join formation/ }).click();
+  await waitIdle(page);
+  check(
+    (await cell(page, 45).getAttribute("aria-label")).includes(
+      "bottom Azure Host Pikeman",
+    ),
+    "sidestep joins underneath ally",
+  );
+  await page.locator("#next-lesson").click();
+  await cell(page, 35).click();
+  await page.getByRole("button", { name: /Melee attack/ }).click();
+  await page.locator("#battle-dialog").waitFor({ state: "visible" });
+  check(
+    (await page.locator("#encounter-title").textContent()).includes("Flank"),
+    "flank cinematic label",
+  );
+  await page.locator("#skip-battle").click();
+  await waitIdle(page);
+  check(
+    (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman") &&
+      (await cell(page, 35).getAttribute("aria-label")).includes("Archer"),
+    "flank preserves attacker origin and enemy companion",
+  );
+  await page.locator("#next-lesson").click();
+  await page.locator('[data-select-slot="1"]').click();
+  await cell(page, 36).click();
+  await waitIdle(page);
+  check(
+    (await cell(page, 36).getAttribute("aria-label")).includes("Cavalry") &&
+      (await cell(page, 45).getAttribute("aria-label")).includes("Pikeman") &&
+      (await cell(page, 54).getAttribute("aria-label")).includes("Pikeman"),
+    "Cavalry passes ally and preserves source companion",
+  );
+  await page.locator("#next-lesson").click();
+  await page.locator('[data-select-slot="1"]').click();
+  await cell(page, 20).click();
+  await page.getByRole("button", { name: /Ranged attack/ }).click();
+  await page.locator("#battle-dialog").waitFor({ state: "visible" });
+  await page.locator(".return-arrow").waitFor({ state: "attached" });
+  await page.screenshot({ path: resolve(out, "combat-return-fire.png") });
+  await waitIdle(page);
+  check(
+    (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman") &&
+      !(await cell(page, 36).getAttribute("aria-label")).includes("Archer") &&
+      !(await cell(page, 20).getAttribute("aria-label")).includes("Archer"),
+    "return fire removes both selected Archers",
+  );
   await page.locator("#next-lesson").click();
   await cell(page, 28).click();
   await page.getByRole("button", { name: /Melee attack/ }).click();
@@ -237,6 +324,74 @@ try {
     "tutorial completed",
   );
   await page.locator("#next-lesson").click();
+  // Restore a legal history containing a bottom-slot Commander retreat.
+  const retreatRecord = createRecord(
+    [
+      [6, 4, 0, 5, 4, 0],
+      [1, 4, 0, 2, 4, 0],
+      [7, 4, 0, 6, 4, 0],
+      [2, 4, 0, 3, 4, 0],
+      [6, 4, 0, 5, 4, 0],
+      [3, 4, 0, 4, 4, 0],
+      [5, 4, 1, 6, 4, 0],
+    ],
+    { mode: "local", difficulty: "knight", humanSide: 1 },
+  );
+  await page
+    .locator("#file-input")
+    .setInputFiles({
+      name: "retreat-v3.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(retreatRecord)),
+    });
+  await page.locator("#game").waitFor({ state: "visible" });
+  check(
+    (await page.locator("#commander-retreats").textContent()).includes(
+      "Azure 1/3",
+    ),
+    "restored retreat counter visible",
+  );
+  await page.locator("#flip-button").click();
+  check(
+    (await cell(page, 52).locator(".facing-indicator").textContent()) === "↓" &&
+      (await cell(page, 52).getAttribute("aria-label")).includes(
+        "faces rank 8",
+      ),
+    "display flip reverses arrow while logical facing stays fixed",
+  );
+  await page.locator("#flip-button").click();
+  await page.locator("#undo-button").click();
+  check(
+    (await page.locator("#commander-retreats").textContent()).includes(
+      "Azure 0/3",
+    ),
+    "undo restores retreat count",
+  );
+  await page.locator("#guide-button").click();
+  await page.locator('[data-guide="counters"]').click();
+  check(
+    (await page.locator("td.outcome-stance").count()) === 4 &&
+      !(await page.locator("#modal-content").textContent()).includes(
+        "undefined",
+      ),
+    "guide renders all four stance cells",
+  );
+  await page.locator("#modal-close").click();
+  await page.locator("#menu-button").click();
+  await page.locator("#return-camp").click();
+  await page.evaluate(
+    ({ key, record }) =>
+      localStorage.setItem(key, JSON.stringify({ ...record, rules: 2 })),
+    { key: SAVE_KEY, record: retreatRecord },
+  );
+  await page.reload();
+  await page.locator("#continue").click();
+  check(
+    (await page.locator("#toast").textContent()).includes(
+      "Rules v3 requires a new battle",
+    ) && (await page.locator("#lobby").isVisible()),
+    "old autosave explains breaking rules version",
+  );
   // AI reply in both player orientations; menus cancel in-flight work.
   await page.locator('input[value="solo"]').check();
   await page.locator('input[name=side][value="1"]').check();

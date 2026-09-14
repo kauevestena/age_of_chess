@@ -51,6 +51,8 @@ class RawAgeOfChess(AECEnv):
                 "winner": self.engine.state.winner,
                 "reason": self.engine.state.reason,
                 "move_count": self.engine.state.move_count,
+                "rules_version": self.engine.rules.game.version,
+                "commander_retreat_counts": self.engine.state.retreat_counts.copy(),
                 "repetition_count": self.engine.state.position_counts.get(self.engine.state.position_key(), 0),
                 # Full repetition history is available to search/recurrent policies.
                 "position_counts": self.engine.state.position_counts.copy(),
@@ -95,6 +97,6 @@ class RawAgeOfChess(AECEnv):
 def age_of_chess_v1(ruleset_path="rulesets/default.yaml", max_plies=512):
     return wrappers.OrderEnforcingWrapper(RawAgeOfChess(ruleset_path, max_plies))
 
-# Import compatibility only: v2 rules and v1 observations/actions require retraining.
+# Import compatibility only: rules v3 and 29-plane observations require retraining.
 def age_of_chess_v0(ruleset_path="rulesets/default.yaml", max_plies=512):
     return age_of_chess_v1(ruleset_path, max_plies)

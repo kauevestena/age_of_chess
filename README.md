@@ -3,7 +3,9 @@
 A simulator-first tactical chess variant with stacking, ranged attacks, conversion,
 class counters and capture-the-Commander victory. See [the complete rules](rulesets/RULES.md).
 
-**Rules v2:** Pikeman beats Archer in melee; Archer can kill Pikeman at range.
+**Rules v3:** guarded same-class stance, frontal sideways evasion, Cavalry passage
+through single allies, attacks in every direction, Archer return fire, lone-Commander
+defeat and a three-retreat Commander forfeit. Pikemen still beat Archers in melee.
 Partial stack attacks leave a surviving attacker at its origin. Commander conversion
 is forbidden. The third occurrence of a position is a draw. The rules schema and
 combat table are validated; unsupported settings fail instead of being ignored.
@@ -65,9 +67,10 @@ The canonical tuple is `(from_row, from_col, slot, to_row, to_col, kind)` everyw
 for the discrete interface. Illegal direct-engine actions raise before mutation;
 illegal training-interface actions forfeit, without silently executing another move.
 
-The observation has shape `(27, 8, 8)` and dtype `float32`: own top/bottom class
+The observation has shape `(29, 8, 8)` and dtype `float32`: own top/bottom class
 planes (12), opponent top/bottom planes (12), own North-direction flag, side-to-move
-flag, and normalized current-position occurrence count. Coordinates are **absolute**,
+flag, normalized current-position occurrence count, and normalized own/opponent
+Commander retreat counters. Coordinates are **absolute**,
 matching action IDs. Full repetition history is available in `info['position_counts']`;
 the observation alone does not encode every past position. Inactive/finished agent
 masks contain only zeros. Rewards are per-step, terminal-only, and zero-sum.
@@ -78,7 +81,7 @@ rewards do not pay capture/conversion bonuses that can be farmed in a loop.
 
 The old `age_of_chess_v0` name remains an import alias only. Old YAML files and
 checkpoints need migration/retraining: the action layout and observation changed.
-Do not compare old reward-adjudicated league records with v2 results.
+Do not compare old reward-adjudicated league records with v3 results.
 
 ## Training and evaluation
 
@@ -97,7 +100,7 @@ python -m implementation.league.report
 ```
 
 MaskablePPO is preferred; the unmasked A2C baseline may repeatedly forfeit by
-sampling illegal actions. The league loads both flat and tensor v2 checkpoints.
+sampling illegal actions. The league loads both flat and tensor v3 checkpoints.
 It records draws and truncations distinctly and excludes unresolved/legacy records
 from ratings. Greedy uses seeded random tie breaks, not coordinate-order ties.
 

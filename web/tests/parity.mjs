@@ -45,6 +45,8 @@ try {
         { counts, ...after } = result.state;
       assert.deepEqual(after, sample.after, `Transition at sample ${count}`);
       validateState(result.state);
+      assert.equal(result.event.approach ?? null, sample.approach);
+      assert.equal(result.event.stance ?? null, sample.stance);
       const losses = result.event.losses.map((l) => ({
         code: code(l.unit),
         side: l.unit > 0 ? "north" : "south",

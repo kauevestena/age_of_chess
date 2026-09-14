@@ -1,14 +1,14 @@
-"""Rules-v2 engine with atomic validation, ordered friendly stacks and adjudication."""
+"""Rules-v3 engine with atomic validation, ordered friendly stacks and adjudication."""
 from __future__ import annotations
 import copy
 import numpy as np
 from .rules_loader import load_ruleset
 from .game_state import GameState, standard_setup
 from .movegen import gen_single_moves, ALL_DIRS
-from .combat import resolve_melee
+from .combat import resolve_melee, attack_sector
 from .utils import action_mask_from_legal, opponent, in_bounds, encode_action
 
-OBSERVATION_SHAPE = (27, 8, 8)
+OBSERVATION_SHAPE = (29, 8, 8)
 
 class Engine:
     def __init__(self, ruleset_path="rulesets/default.yaml", *, rules=None):
@@ -26,6 +26,10 @@ class Engine:
         if (state.board.rows, state.board.cols) != (8, 8) or state.to_move not in ("north", "south"):
             raise ValueError("Invalid study position")
         state.board.validate()
+        if (set(state.retreat_counts) != {"north", "south"} or
+                any(type(n) is not int or not 0 <= n <= 3 for n in state.retreat_counts.values()) or
+                all(n == 3 for n in state.retreat_counts.values())):
+            raise ValueError("Invalid Commander retreat counts")
         self.state = state.copy()
         self.state.terminated = self.state.truncated = False
         self.state.winner = self.state.reason = None
@@ -50,8 +54,11 @@ class Engine:
         fr, fc, slot, tr, tc, kind = action
         src, dst = self.state.board.grid[fr][fc], self.state.board.grid[tr][tc]
         actor = (src.top, src.bottom)[slot]
+        if kind == 2 and dst.top.code == "B":
+            return ["B"]
         if kind == 1:
-            alive, top, bottom = resolve_melee(actor, dst.top, dst.bottom, self.rules)
+            alive, top, bottom = resolve_melee(actor, dst.top, dst.bottom, self.rules,
+                                              from_pos=(fr, fc), to_pos=(tr, tc))
             if not alive:
                 return [actor.code]
             # A surviving Q can only advance if the defender square is cleared.
@@ -107,6 +114,8 @@ class Engine:
         obs[25] = float(agent == self.state.to_move)
         count = self.state.position_counts.get(self.state.position_key(), 0)
         obs[26] = min(count/self.rules.game.repetition_draw, 1.0)
+        obs[27] = self.state.retreat_counts[agent] / self.rules.game.commander_retreat_limit
+        obs[28] = self.state.retreat_counts[opponent(agent)] / self.rules.game.commander_retreat_limit
         return obs
 
     def _priestess_deaths(self, losses):
@@ -124,10 +133,22 @@ class Engine:
 
     def _adjudicate(self):
         seen = self.kings_present()
+        retreat_loser = next((s for s, n in self.state.retreat_counts.items()
+                             if n >= self.rules.game.commander_retreat_limit), None)
+        lone = {s: sum(u is not None and u.side == s for row in self.state.board.grid
+                       for sq in row for u in (sq.top, sq.bottom)) == 1 for s in seen}
         if not all(seen.values()):
             self.state.terminated = True
             self.state.winner = next((side for side, present in seen.items() if present), "draw")
             self.state.reason = "commander_capture" if any(seen.values()) else "both_commanders_absent"
+        elif retreat_loser:
+            self.forfeit(retreat_loser, "commander_retreat_forfeit")
+        elif any(lone.values()):
+            if all(lone.values()):
+                self.state.terminated = True
+                self.state.winner, self.state.reason = "draw", "both_commanders_alone"
+            else:
+                self.forfeit(next(s for s, alone in lone.items() if alone), "lone_commander")
         elif not self.legal_actions_unfiltered():
             self.forfeit(self.state.to_move, "stagnation")
         elif self.state.position_counts.get(self.state.position_key(), 0) >= self.rules.game.repetition_draw:
@@ -166,16 +187,20 @@ class Engine:
         actor = (src.top, src.bottom)[slot]
         side, code = actor.side, actor.code
         event = {"atype": kind, "actor": code, "player": side,
-                 "from": (fr, fc), "to": (tr, tc), "slot": slot, "losses": []}
+                 "from": (fr, fc), "to": (tr, tc), "slot": slot, "losses": [], "moved": False}
         def remove(square, which, cause):
             u = square.remove_unit(which)
             event["losses"].append({"code": u.code, "side": u.side, "cause": cause})
             return u
         if kind == 0:
             dst.add_unit(src.remove_unit("bottom" if slot else "top"))
+            event["moved"] = True
         elif kind == 1:
             top_code, bottom_code = dst.top.code, dst.bottom.code if dst.bottom else None
-            alive, top_alive, bottom_alive = resolve_melee(actor, dst.top, dst.bottom, self.rules)
+            event["approach"] = attack_sector((fr, fc), (tr, tc), dst.top.side)
+            event["stance"] = self.rules.game.combat.single[code][top_code] == "stance"
+            alive, top_alive, bottom_alive = resolve_melee(actor, dst.top, dst.bottom, self.rules,
+                                                          from_pos=(fr, fc), to_pos=(tr, tc))
             event["capture"] = {"def_top": top_code, "def_bottom": bottom_code,
                                 "att_alive": alive, "top_alive": top_alive, "bottom_alive": bottom_alive}
             if dst.bottom and not bottom_alive: remove(dst, "bottom", "melee")
@@ -184,16 +209,23 @@ class Engine:
                 remove(src, "bottom" if slot else "top", "melee")
             elif dst.is_empty():
                 dst.add_unit(src.remove_unit("bottom" if slot else "top"))
+                event["moved"] = True
             # Otherwise attacker remains in the original slot; no mixed stack.
         elif kind == 2:
             killed = remove(dst, "top", "ranged")
             normal_targets = {c for a in self.rules.game.pieces[code].abilities
                               if a.name == "ranged" for c in a.targets}
             event["ranged"] = {"killed": killed.code, "power_shot": killed.code not in normal_targets}
+            if killed.code == "B":
+                remove(src, "bottom" if slot else "top", "return_fire")
+                event["ranged"]["return_fire"] = True
         elif kind == 3:
             event["convert"] = {"converted": dst.top.code, "previous_side": dst.top.side}
             dst.top.side = side
         self._priestess_deaths(event["losses"])
+        backward = (tr-fr) * (1 if side == "north" else -1) > 0
+        self.state.retreat_counts[side] = (self.state.retreat_counts[side]+1
+            if code == "K" and event["moved"] and backward else 0)
         self.state.to_move = opponent(side)
         self.state.move_count += 1
         key = self.state.position_key()

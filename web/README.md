@@ -1,6 +1,6 @@
 # Age of Chess — Warfare: browser game
 
-A complete static client for the canonical rules v2. The browser runs all rules,
+A complete static client for the canonical rules v3. The browser runs all rules,
 AI search, animation, audio synthesis and save management. There are no accounts,
 API keys, analytics, server requests for moves, or external runtime dependencies.
 All fonts, art and music ship with the game. No service worker is installed:
@@ -26,7 +26,7 @@ files; neither npm dependencies nor the research implementation are deployed.
 - **Watch a battle:** AI-versus-AI spectator mode, with an independent AI level
   for each army, Pause/Resume, Next order and three playback paces. The existing
   soundtrack and cinematic battles accompany the match.
-- Seven interactive lessons, all six unit descriptions and a full combat table.
+- Twelve interactive lessons, all six unit descriptions and a full combat table.
 - Original illustrated unit figures, landscape, heraldry, stone board, medieval
   typography, and a responsive layout with touch and keyboard controls.
 - Deterministic attack previews, explicit ranged/melee selection, accessible
@@ -135,3 +135,13 @@ the unmodified font sources; the outlines and names are unchanged:
 The score notes and instrumentation are in `src/audio.mjs`; unit art is in
 `src/art.mjs`. These are intentionally editable, text-based source assets.
 Audio activation follows [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices).
+
+## Rules v3 compatibility
+
+The field guide, attack previews, board facing arrows and tutorial explain guarded
+same-class stance, frontal sideways evasion and Cavalry passage through one ally.
+Attack direction is unrestricted within each class's reach; quiet movement retains
+its usual restrictions. Archer return fire, lone-Commander defeat and the third
+consecutive Commander retreat are included. Both retreat counters are reconstructed
+by save/load, undo and replay. Old v2 records are explicitly rejected because their
+orders may now have different outcomes. Start a new battle under v3.

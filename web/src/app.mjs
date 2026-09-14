@@ -36,8 +36,8 @@ const DIRECTION = (owner) => (owner === 1 ? "North" : "South");
 const names = { squire: "Squire", knight: "Knight", marshal: "Marshal" };
 const descriptions = {
   P: "A disciplined line of spears. Defeats Cavalry and Archers in melee; falls to Heavy Infantry.",
-  N: "A swift shock unit. Takes one or two clear forward steps. Defeats lone Heavy Infantry; beware Pikemen and Infantry-led stacks.",
-  B: "A bow is strongest at a distance. Fires along three forward rays, up to two squares. Pikemen defeat Archers in melee.",
+  N: "A swift shock unit. Takes one or two forward steps, passing through an empty square or one ally. Defeats lone Heavy Infantry; beware Pikemen and Infantry-led stacks.",
+  B: "Fires along any clear straight or diagonal ray, up to two squares. Archers return fire against Archers: both die. Pikemen defeat Archers in melee.",
   R: "The armored heart of an army. Defeats Pikemen and Archers. A lone Infantry unit is vulnerable to Cavalry.",
   Q: "Turns a solitary adjacent enemy to your banner. Cannot convert a Commander, Priestess, or formation.",
   K: "The fate of the realm. Captures any top defender when attacking. Losing your Commander ends the battle.",
@@ -245,9 +245,10 @@ $("#continue").onclick = () => {
     const saved = readRecord(savedText);
     loadGame(saved);
     startSound();
-  } catch {
+  } catch (error) {
     toast(
-      "This saved battle could not be read. Start a new battle or load another save.",
+      error.message ||
+        "This saved battle could not be read. Start a new battle or load another save.",
     );
   }
 };
@@ -407,8 +408,10 @@ function render() {
     ? "The contest"
     : "Your objective";
   $("#objective-description").textContent = isSpectating()
-    ? "Two armies. One crown. The first to capture the opposing Commander wins."
-    : "Capture the enemy Commander. Every decision shapes the battle.";
+    ? "Two armies. One crown. A captured or unsupported Commander loses."
+    : "Capture the enemy Commander or eliminate every unit supporting it.";
+  $("#commander-retreats").textContent =
+    `Commander retreats · Azure ${display.retreats[0]}/3 · Ember ${display.retreats[1]}/3. ${display.retreats.includes(2) ? "Warning: another consecutive retreat forfeits the battle." : "Three consecutive retreats forfeit the battle."}`;
   $(".keyboard-tip").textContent = isSpectating()
     ? "Pause to inspect units or review the chronicle · Arrow keys to navigate · F to flip"
     : "Arrow keys to navigate · Enter to select · Escape to cancel · F to flip · U to undo";
@@ -503,7 +506,7 @@ function renderBoard(display) {
           ),
         )
         .join("");
-      return `<button class="${classes}" data-index="${i}" tabindex="${i === activeCell ? 0 : -1}" aria-label="${squareName(i)}, ${unitText}${targets.length ? ", legal destination" : ""}" aria-pressed="${isSelected}">${sq.length ? `<span class="piece-base"></span><span class="piece-code">${sq.map(code).join("·")}</span>` : ""}${arts}${sq.length > 1 ? '<span class="stack-badge">2</span>' : ""}${targets.length ? `<span class="target-marks">${[...new Set(targets.map((a) => a[5]))].map((k) => `<i class="${["move", "attack", "range", "faith"][k]}-dot"></i>`).join("")}</span>` : ""}</button>`;
+      return `<button class="${classes}" data-index="${i}" tabindex="${i === activeCell ? 0 : -1}" aria-label="${squareName(i)}, ${unitText}${sq.length ? `, faces rank ${side(sq[0]) > 0 ? 8 : 1}` : ""}${targets.length ? ", legal destination" : ""}" aria-pressed="${isSelected}">${sq.length ? `<span class="piece-base"></span><span class="piece-code">${sq.map(code).join("·")}</span><span class="facing-indicator" aria-hidden="true">${side(sq[0]) * (flipped ? -1 : 1) > 0 ? "↑" : "↓"}</span>` : ""}${arts}${sq.length > 1 ? '<span class="stack-badge">2</span>' : ""}${targets.length ? `<span class="target-marks">${[...new Set(targets.map((a) => a[5]))].map((k) => `<i class="${["move", "attack", "range", "faith"][k]}-dot"></i>`).join("")}</span>` : ""}</button>`;
     })
     .join("");
   $("#rank-labels").innerHTML = Array.from(
@@ -536,7 +539,7 @@ function renderSelection(display) {
   $("#selected-name").textContent = label(unit);
   $("#selected-description").textContent = descriptions[code(unit)];
   $("#unit-facts").innerHTML =
-    `<span>${HOST(side(unit))} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "Bottom" : "Top"} unit` : ""}</span><br><span>${isSpectating() ? "Spectator view · the AI controls this unit." : side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
+    `<span>${HOST(side(unit))} · faces rank ${side(unit) > 0 ? 8 : 1} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "Bottom" : "Top"} unit` : ""}</span><br><span>${isSpectating() ? "Spectator view · the AI controls this unit." : side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
   if (sq.length > 1) {
     $("#slot-controls").innerHTML =
       `<div class="slot-buttons" aria-label="Choose stack slot">${sq.map((u, slot) => `<button data-select-slot="${slot}" class="${selected.slot === slot ? "active" : ""}" aria-pressed="${selected.slot === slot}">${slot ? "Bottom" : "Top"} · ${label(u)}</button>`).join("")}</div>`;
@@ -917,9 +920,15 @@ function showResult() {
   const reason =
     {
       commander_capture: "The opposing Commander has fallen.",
+      lone_commander:
+        "The opposing Commander has no surviving units to command.",
+      both_commanders_alone:
+        "Both armies were reduced to lone Commanders simultaneously.",
+      commander_retreat_forfeit:
+        "The opposing Commander retreated on three consecutive army turns and forfeits.",
       stagnation: "The opposing army has no legal order remaining.",
       threefold_repetition:
-        "The same position, formations, and side to move have occurred three times.",
+        "The same board, formations, side to move, and Commander retreat counts have occurred three times.",
       resignation: "The opposing Commander has conceded the battle.",
       both_commanders_absent: "Both Commanders are absent.",
     }[state.reason] || "The battle is over.";
@@ -1060,7 +1069,7 @@ function guide(tab = "essentials") {
       )
       .join("");
   else if (tab === "counters")
-    content = `<p class="muted" style="margin-bottom:16px">Rows attack columns. W: attacker wins. L: attacker dies. M: both die. —: melee unavailable. These are solitary defenders.</p><div class="table-scroll"><table><thead><tr><th>Attacker</th>${[..."PNBRQK"].map((c) => `<th title="${RULES.pieces[c].label}">${c}</th>`).join("")}</tr></thead><tbody>${[
+    content = `<p class="muted" style="margin-bottom:16px">Rows attack columns. W: attacker wins. L: attacker dies. M: both die. S: guarded stance. —: melee unavailable. These are solitary defenders.</p><div class="table-scroll"><table><thead><tr><th>Attacker</th>${[..."PNBRQK"].map((c) => `<th title="${RULES.pieces[c].label}">${c}</th>`).join("")}</tr></thead><tbody>${[
       ..."PNBRQK",
     ]
       .map(
@@ -1068,19 +1077,19 @@ function guide(tab = "essentials") {
           `<tr><th>${c} · ${RULES.pieces[c].label}</th>${[..."PNBRQK"]
             .map((d) => {
               const outcome = RULES.combat.single[c][d];
-              return `<td class="outcome-${outcome}">${{ win: "W", lose: "L", mutual: "M", illegal: "—" }[outcome]}</td>`;
+              return `<td class="outcome-${outcome}">${{ win: "W", lose: "L", mutual: "M", stance: "S", illegal: "—" }[outcome]}</td>`;
             })
             .join("")}</tr>`,
       )
       .join(
         "",
-      )}</tbody></table></div><div class="guide-prose"><h3>Three formation exceptions</h3><ul><li>Cavalry attacking two Archers kills both.</li><li>Cavalry attacking a stack with Heavy Infantry on top dies; both defenders survive.</li><li>Heavy Infantry attacking two Pikemen dies with the top Pikeman; the bottom survives.</li></ul><p>Otherwise attack the top unit once. If a defender remains, a surviving attacker stays at its origin in its original slot. A bottom Commander remains protected until promoted to top.</p></div>`;
+      )}</tbody></table></div><div class="guide-prose"><h3>S · Guarded stance</h3><p>For matching ordinary classes: directly ahead (2), defender wins; front diagonals (1, 3), both die; sides and rear (4, 6, 7, 8, 9), attacker wins. Use the starting square in the defender’s facing frame. This applies to the top of a formation too; a matching bottom alone gives no bonus.</p><h3>Three formation exceptions</h3><ul><li>Cavalry attacking two Archers kills both.</li><li>Cavalry attacking a stack with Heavy Infantry on top dies; both defenders survive.</li><li>Heavy Infantry attacking two Pikemen dies with the top Pikeman; the bottom survives.</li></ul><p>Otherwise attack the top unit once. If a defender remains, a surviving attacker stays at its origin in its original slot. A bottom Commander remains protected until promoted to top.</p></div>`;
   else
-    content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the Commander to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement and retreat</h3><p>Units step straight or diagonally forward. Cavalry may take two forward steps through an empty intermediate square, without jumping or continuing after combat. In the enemy half, units except the Commander can also step sideways. At the enemy back rank, every class can step once in any direction. A Priestess may retreat when an enemy is adjacent; a Commander may retreat when an enemy is within two squares in any direction, regardless of blockers.</p><h3>Two units. One formation.</h3><p>Move onto a friendly solitary unit to join underneath it. Both slots can act: choose Top or Bottom in the unit panel, or press B while on the board. The top takes enemy attacks; its death promotes the bottom. You cannot freely reorder a stack. Your companion does not add melee strength.</p><h3>Arrows and allegiance</h3><p>An Archer shoots one or two squares along a straight or diagonal forward ray. Any occupied square blocks further fire. A shot kills a top Pikeman, Archer, or Priestess. Two Archers together can also shoot Cavalry and Heavy Infantry. Shooting never moves the Archer and never kills a Commander.</p><p>A Priestess converts an adjacent solitary Pikeman, Cavalry, Archer, or Heavy Infantry in place. Converted units immediately use their new side’s direction. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize Commander deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>Commander capture wins first. An army with no legal order loses. The third occurrence of an identical board, stack order, ownership, and side to move is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one order in local play. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
+    content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the Commander, leave it as the last enemy unit, or force a retreat forfeit to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement and retreat</h3><p>Units step straight or diagonally forward. Cavalry may take two forward steps through an empty square or one ally. The intermediate ally stays in place. Enemies and full formations block passage; movement stops after combat. To attack, any unit may approach from any direction, with Cavalry taking up to two steps. With an enemy directly one square ahead, any unit may step sideways onto an empty square or one ally; full friendly formations block the step. A diagonal enemy alone does not grant this evasion. In the enemy half, units except the Commander can also step sideways. At the enemy back rank, every class can step once in any direction. A Priestess may retreat when an enemy is adjacent; a Commander may retreat when an enemy is within two squares in any direction, regardless of blockers.</p><h3>Hold the front. Turn the flank.</h3><p>Matching Pikemen, Cavalry, Archers in melee, and Infantry use the defender’s stance. From directly ahead (cell 2), the defender wins; from front diagonals (1 or 3), both die; from the sides or rear (4, 6, 7, 8, 9), the attacker wins. Use the attack’s starting square, even for Cavalry. Formation combat compares the acting unit with the top defender; companions survive. Priestesses still cancel, Commander capture still wins, and class counters remain unchanged.</p><p>Board arrows show facing: Azure faces rank 8; Ember faces rank 1. Facing follows ownership, not the last move. Rotating the board does not change it.</p><h3>Two units. One formation.</h3><p>Move onto a friendly solitary unit to join underneath it. Both slots can act: choose Top or Bottom in the unit panel, or press B while on the board. The top takes enemy attacks; its death promotes the bottom. You cannot freely reorder a stack. Your companion does not add melee strength.</p><h3>Arrows and allegiance</h3><p>An Archer shoots one or two squares along any straight or diagonal ray. Any occupied square blocks further fire. A shot kills a top Pikeman, Archer, or Priestess. Two Archers together can also shoot Cavalry and Heavy Infantry. Shooting an Archer causes return fire: both the target and the actual shooter die, including a bottom-slot shooter. Companions survive. Other shots kill only the top defender. Shooting never moves an Archer and never kills a Commander.</p><p>A Priestess converts an adjacent solitary Pikeman, Cavalry, Archer, or Heavy Infantry in place. Converted units immediately use their new side’s direction. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize Commander deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>Commander capture wins first. Three consecutive backward Commander movements on that army’s turns forfeit; backward diagonals count. Another unit’s order or a non-backward Commander order resets the streak; the opponent’s turns preserve it. Combat that leaves the Commander at its origin is not a retreat. Next, an army reduced to its lone Commander loses; both alone simultaneously is a draw. An army with no legal order loses. The third occurrence of an identical board, stack order, ownership, side to move, and retreat counters is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one order in local play. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
   if (tab === "essentials")
     content += `<div class="guide-prose"><h3>Watch the commanders</h3><p>Choose Watch a battle in the war camp to let two AI armies play. Select Squire, Knight, or Marshal independently for each banner. Pause stops the next order; during a cinematic, Pause after this order lets the current encounter finish. Next order advances one turn while paused. Pace changes the interval between turns, while Settings controls animation length. You can inspect units, save, or review the chronicle while paused. Restored spectator games and returning from review stay paused until Resume. Switching to another tab also pauses playback.</p></div>`;
   openModal(
-    `<p class="eyebrow">The commander’s companion</p><h2 id="modal-title">Field guide</h2><div class="guide-tabs">${tabs.map(([id, name]) => `<button data-guide="${id}" class="${id === tab ? "active" : ""}" aria-pressed="${id === tab}">${name}</button>`).join("")}</div>${content}`,
+    `<p class="eyebrow">Rules v3 · The commander’s companion</p><h2 id="modal-title">Field guide</h2><div class="guide-tabs">${tabs.map(([id, name]) => `<button data-guide="${id}" class="${id === tab ? "active" : ""}" aria-pressed="${id === tab}">${name}</button>`).join("")}</div>${content}`,
   );
   document
     .querySelectorAll("[data-guide]")
