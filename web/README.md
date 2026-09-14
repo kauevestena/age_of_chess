@@ -1,6 +1,6 @@
 # Age of Chess — Warfare: browser game
 
-A complete static client for the canonical rules v4. The browser runs all rules,
+A complete static client for the canonical rules v5. The browser runs all rules,
 AI search, animation, audio synthesis and save management. There are no accounts,
 API keys, analytics, server requests for moves, or external runtime dependencies.
 All fonts, art and music ship with the game. No service worker is installed:
@@ -65,7 +65,7 @@ the normal victory or draw conditions. All decisions still run locally.
 
 A spectator step completes up to three preparations and exactly one normal order.
 There is no turn cap, material adjudication, online service or automatic rematch.
-Rules v4 saves support all three modes; older rules versions require a new battle.
+Rules v5 saves support all three modes; older rules versions require a new battle.
 
 ## GitHub Pages
 
@@ -138,7 +138,24 @@ The score notes and instrumentation are in `src/audio.mjs`; unit art is in
 `src/art.mjs`. These are intentionally editable, text-based source assets.
 Audio activation follows [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices).
 
-## Rules v4 formations and compatibility
+## Rules v5 Kings, veterans and compatibility
+
+Kings are unarmed, immune to ranged attacks and conversion, and can retreat only
+with an enemy within two squares (including diagonals and adjacent enemies).
+In every arrangement, a King's escort meets front/flank attackers first. Matching
+front attacks lose; matching flank attacks cancel attacker and escort while the
+King lives. Counters stay absolute; rear exposure and ready reserves are unchanged.
+The King panel shows both movement streaks: the third backward move or fourth King
+move forfeits. Another unit's order resets both; preparations affect neither.
+
+A non-King reaching the enemy back rank retains backward and diagonal movement
+permanently. A ↶ mark and unit details identify each veteran, including in formations,
+replay and after conversion. All Archer shots now reach exactly one square,
+including double-Archer power shots. The tutorial includes four new lessons.
+
+See [the validation and 2,000-game simulation review](review/KINGS_V5.md).
+
+### Formation controls and saves
 
 Select an existing formation to see both physical subcells and choose A or B to
 act. Four arrangement buttons let you swap members or change axis, once per
@@ -147,7 +164,7 @@ visible. Flipping the board rotates the drawing, not the underlying layout or
 army facing. Undo first cancels pending preparations, otherwise a complete turn.
 Partial-turn saves restore the remaining budget; review includes each preparation.
 
-Combat first applies class counters. E–W braces the entire front arc and exposes
+Combat first applies class counters. Outside the King’s front/flank exception, E–W braces the entire front arc and exposes
 both units to a direct rear attack; N–S exposes both at the side flanks. Other
 approaches meet the nearest member followed by a ready reserve if the attacker
 survives. There is no fatigue or old stack-counter exception. Cinematics follow
@@ -158,6 +175,6 @@ AI searches normal orders, then applies a bounded defensive planner to persisten
 formations. It does not exhaustively search every combination of three preparations
 and future orders; this is a heuristic opponent, not a balance proof.
 
-Old v3 and earlier records are explicitly rejected because the same orders now
-have different outcomes. Start a new battle under v4. The static build and all
+Old v4 and earlier records are explicitly rejected because the same orders now
+have different outcomes. Start a new battle under v5. The static build and all
 original artwork, typography and locally synthesized music remain self-contained.

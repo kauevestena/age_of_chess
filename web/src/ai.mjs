@@ -1,5 +1,6 @@
 import { legalOrders, unfilteredActions, preparationActions, transition, code, side, melee, isShot, shotSlot } from "./engine.mjs";
 import { RULES } from "./rules.mjs";
+import { canonicalLayout } from "./formations.mjs";
 
 export function evaluate(state) {
   if (state.winner !== null)
@@ -10,7 +11,7 @@ export function evaluate(state) {
         : -100000;
   let result = 0;
   state.board.forEach((sq, i) =>
-    sq.forEach((u) => {
+    sq.forEach((u, slot) => {
       const c = code(u),
         sign = side(u),
         row = Math.floor(i / 8),
@@ -19,7 +20,8 @@ export function evaluate(state) {
       const center = 3.5 - Math.abs(column - 3.5);
       let value = RULES.pieces[c].value * 100;
       if (c !== "K") value += advance * 4 + center * 2;
-      // A Commander has no permanent bottom-slot shield.
+      if (state.veteran[i][slot]) value += 20;
+      if (c === "K" && sq.length === 2) value += 35;
       if (
         c === "B" &&
         sq.length === 2 &&
@@ -152,12 +154,12 @@ export function planPreparations(state, order) {
   const after = transition(state, order, true).state;
   if (after.winner !== null) return [];
   const eligible = new Set(options.map(a => a[0] * 8 + a[1]).filter(i =>
-    state.board[i].join() === after.board[i].join()));
+    state.board[i].join() === after.board[i].join() && state.veteran[i].join() === after.veteran[i].join()));
   const scores = new Map([...eligible].map(i => [i, [0, 0, 0, 0]]));
   const val = u => RULES.pieces[code(u)].value * 100;
   for (let layout = 0; layout < 4; layout++) {
     const view = { ...after, layout: [...after.layout] };
-    for (const i of eligible) view.layout[i] = state.board[i][0] === state.board[i][1] ? layout & 2 : layout;
+    for (const i of eligible) view.layout[i] = canonicalLayout(state.board[i], layout, state.veteran[i]);
     const risks = new Map();
     for (const action of unfilteredActions(view)) {
       const [r, c, slot, rr, cc, kind] = action, to = rr * 8 + cc;

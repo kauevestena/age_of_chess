@@ -1,9 +1,12 @@
 game:
   name: Age of Chess – Warfare
-  version: 4
+  version: 5
   attack_all_directions: true
   lone_commander_loses: true
   commander_retreat_limit: 3
+  king_move_limit: 4
+  permanent_backward_movement: true
+  king_formation_guard: escort_first
   archer_return_fire: true
   same_type_stance: guarded_center
   frontal_enemy_sidesteps: true
@@ -41,10 +44,10 @@ game:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
       abilities:
         - name: ranged
-          range: 2
+          range: 1
           targets: [B, P, Q]
         - name: power_shot
-          range: 2
+          range: 1
           requires_stack_size: 2
           targets: [N, R]
       value: 3
@@ -67,17 +70,18 @@ game:
           targets: [P, N, B, R]
       value: 4
     K:
-      label: Commander
+      label: King
       class: king
       move:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         attack_field_sideways: false
+        last_rank_all_directions: false
         retreat_trigger: nearby_enemy
         threat_radius: 2
       abilities: []
       value: 1000
-  # Rows are attackers, columns defenders. Commander capture overrides this
-  # matrix; Priestess melee is limited to Commander capture / mutual duel.
+  # Rows are attackers, columns defenders. Kings cannot attack or fight back.
+  # Priestess melee is limited to King capture / mutual duel.
   combat:
     single:
       P: {P: stance, N: win, B: win, R: lose, Q: win, K: win}
@@ -85,7 +89,7 @@ game:
       B: {P: lose, N: lose, B: stance, R: lose, Q: win, K: win}
       R: {P: win, N: lose, B: win, R: stance, Q: win, K: win}
       Q: {P: illegal, N: illegal, B: illegal, R: illegal, Q: mutual, K: win}
-      K: {P: win, N: win, B: win, R: win, Q: win, K: win}
+      K: {P: illegal, N: illegal, B: illegal, R: illegal, Q: illegal, K: illegal}
     stacks: []
 rewards:
   win: 1.0

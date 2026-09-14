@@ -40,7 +40,7 @@ def test_guarded_stance_every_sector_slot_and_owner(position, defender, sector, 
 @pytest.mark.parametrize('sector,dr,dc', SECTORS)
 def test_cross_class_counters_and_exceptions_ignore_facing(rules, sector, dr, dc):
     origin=(3+dr,3+dc)
-    for a,d,expected in [('P','B',(True,False,False)),('B','P',(False,True,False)),('Q','Q',(False,False,False)),('K','K',(True,False,False))]:
+    for a,d,expected in [('P','B',(True,False,False)),('B','P',(False,True,False)),('Q','Q',(False,False,False))]:
         assert resolve_melee(Unit(a,'south'),Unit(d,'north'),None,rules,from_pos=origin,to_pos=(3,3))==expected
     # Every cross-class duel retains its counter inside a formation.
     assert resolve_melee(Unit('P','south'),Unit('B','north'),Unit('B','north'),rules,from_pos=origin,to_pos=(3,3))==(True,False,False)
@@ -94,7 +94,7 @@ def test_cavalry_full_formations_and_enemies_block_unique_path(position, block, 
         assert (5,2,0,3,4,int(bool(target))) not in e.legal_actions()
 
 def test_backward_attack_does_not_grant_backward_quiet_moves(position):
-    for code in 'PNBRK':
+    for code in 'PNBR':
         e=position([(4,3,code,'north'),(5,3,'B','south')])
         assert (4,3,0,5,3,1) in e.legal_actions()
         if code!='K': assert (4,3,0,5,2,0) not in e.legal_actions()
@@ -106,13 +106,13 @@ def test_backward_attack_does_not_grant_backward_quiet_moves(position):
 @pytest.mark.parametrize('owner', ['north','south'])
 @pytest.mark.parametrize('slot', [0,1])
 def test_return_fire_all_rays_and_shooter_slots(position, sector, dr, dc, owner, slot):
-    e=position([(3,3,'PB' if slot else 'BP',owner),(3+2*dr,3+2*dc,'BP',OTHER[owner])],side=owner)
+    e=position([(3,3,'PB' if slot else 'BP',owner),(3+dr,3+dc,'BP',OTHER[owner])],side=owner)
     # Place the Archer in the exposed subcell for this ray; screening is tested in v4.
-    e.state.board.grid[3+2*dr][3+2*dc].layout = 0 if dr >= 0 else 1
-    event=e.apply((3,3,slot,3+2*dr,3+2*dc,2))
+    e.state.board.grid[3+dr][3+dc].layout = 0 if dr >= 0 else 1
+    event=e.apply((3,3,slot,3+dr,3+dc,2))
     assert event['ranged']['return_fire']
     assert codes(e.state.board.grid[3][3])=='P'
-    assert codes(e.state.board.grid[3+2*dr][3+2*dc])=='P'
+    assert codes(e.state.board.grid[3+dr][3+dc])=='P'
     assert [(x['code'],x['cause']) for x in event['losses']]==[('B','ranged'),('B','return_fire')]
 
 def test_commander_three_retreats_preserve_across_opponent_turns(position):
@@ -131,14 +131,15 @@ def test_retreat_resets_displacement_and_capture_priority(position,owner):
         e=position([(*cell(3,3),'PK' if stack else 'K',owner),(*cell(4,4),target,OTHER[owner]),(*cell(6,0),'P',owner)],side=owner)
         e.state.retreat_counts[owner]=2
         return e
-    e=make(); e.apply((*cell(3,3),0,*cell(4,4),1))
+    e=make(); e.apply((*cell(3,3),0,*cell(4,3),0))
     assert e.state.reason=='commander_retreat_forfeit'
-    e=make('BP',True); e.apply((*cell(3,3),1,*cell(4,4),1))
+    e=make('BP',True); e.apply((*cell(3,3),1,*cell(4,3),0))
     assert e.state.retreat_counts[owner]==3 and e.state.reason=='commander_retreat_forfeit'
     for destination in [cell(3,2),cell(2,3)]:
         e=make();e.apply((*cell(3,3),0,*destination,0));assert e.state.retreat_counts[owner]==0
     e=make();e.apply((*cell(6,0),0,*cell(5,0),0));assert e.state.retreat_counts[owner]==0
-    e=make('K');e.apply((*cell(3,3),0,*cell(4,4),1));assert e.state.winner==owner and e.state.reason=='commander_capture'
+    e=make('K')
+    assert (*cell(3,3),0,*cell(4,4),1) not in e.legal_actions()
 
 def raw_engine(rules, pieces):
     b=Board(8,8)

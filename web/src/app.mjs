@@ -8,7 +8,7 @@ import {
   actionKey,
   squareName,
   describeEvent,
-  isPreparation, isShot, shotSlot, layoutLabel,
+  isPreparation, isShot, shotSlot, layoutLabel, enemyNear,
 } from "./engine.mjs";
 import { RULES } from "./rules.mjs";
 import { POSITIONS } from "./formations.mjs";
@@ -39,10 +39,10 @@ const names = { squire: "Squire", knight: "Knight", marshal: "Marshal" };
 const descriptions = {
   P: "A disciplined line of spears. Defeats Cavalry and Archers in melee; falls to Heavy Infantry.",
   N: "A swift shock unit. Takes one or two forward steps, passing through an empty square or one ally. Defeats Heavy Infantry and Archers in melee; always loses to Pikemen, even from behind.",
-  B: "Fires along any clear straight or diagonal ray, up to two squares. Archers return fire against Archers: both die. Pikemen defeat Archers in melee.",
+  B: "Fires along any clear straight or diagonal ray, one square. Archers return fire against Archers: both die. Pikemen defeat Archers in melee.",
   R: "The armored heart of an army. Defeats Pikemen and Archers. Always loses to Cavalry in melee, including inside a formation.",
-  Q: "Turns a solitary adjacent enemy to your banner. Cannot convert a Commander, Priestess, or formation.",
-  K: "The fate of the realm. Defeats every encountered defender when attacking. Physical escorts leave flanks and rear exposed. Losing your Commander ends the battle.",
+  Q: "Turns a solitary adjacent enemy to your banner. Cannot convert a King, Priestess, or formation.",
+  K: "The fate of the realm. Unarmed and unable to attack. In formation, the escort fights first against front and flank attacks; matching classes gain defense. Rear exposure still depends on placement. Losing your King ends the battle.",
 };
 let state = initialState(),
   moves = [],
@@ -377,7 +377,7 @@ function render() {
                     ? "Paused"
                     : "Awaiting the next order"
                   : config.mode === "local"
-                    ? "Your orders, Commander"
+                    ? "Your orders, King"
                     : state.turn === config.humanSide
                       ? "Your turn"
                       : "Opponent’s turn";
@@ -410,10 +410,10 @@ function render() {
     ? "The contest"
     : "Your objective";
   $("#objective-description").textContent = isSpectating()
-    ? "Two armies. One crown. A captured or unsupported Commander loses."
-    : "Capture the enemy Commander or eliminate every unit supporting it.";
+    ? "Two armies. One crown. A captured or unsupported King loses."
+    : "Capture the enemy King or eliminate every unit supporting it.";
   $("#commander-retreats").textContent =
-    `Commander retreats · Azure ${display.retreats[0]}/3 · Ember ${display.retreats[1]}/3. ${display.retreats.includes(2) ? "Warning: another consecutive retreat forfeits the battle." : "Three consecutive retreats forfeit the battle."}`;
+    `King orders · Azure ${display.kingMoves[0]}/4 (backward ${display.retreats[0]}/3) · Ember ${display.kingMoves[1]}/4 (backward ${display.retreats[1]}/3). ${display.retreats.includes(2) || display.kingMoves.includes(3) ? "A King is one qualifying move from forfeit." : "The fourth consecutive King move or third backward move forfeits."}`;
   $("#formation-budget").textContent = state.winner !== null ? ""
     : `Formation changes: ${display.prepared.length}/${RULES.formation_rearrangements} · ${display.prepared.length === 3 ? "Issue one normal order now." : "Rearrange up to three formations, then issue one normal order."}`;
   $(".keyboard-tip").textContent = isSpectating()
@@ -486,7 +486,7 @@ function renderBoard(display) {
         ? sq
             .map(
               (u, slot) =>
-                `${sq.length > 1 ? `unit ${slot ? "B" : "A"} at ${POSITIONS[display.layout[i]][slot]}` : "unit"} ${HOST(side(u))} ${label(u)}`,
+                `${sq.length > 1 ? `unit ${slot ? "B" : "A"} at ${POSITIONS[display.layout[i]][slot]}` : "unit"} ${HOST(side(u))} ${label(u)}${display.veteran[i][slot] ? ", veteran: permanent backward movement" : ""}`,
             )
             .join(", ")
         : "empty";
@@ -506,11 +506,11 @@ function renderBoard(display) {
         .map((u, slot) =>
           unitSVG(u, slot ? "bottom" : "top").replace(
             "viewBox=",
-            `data-slot="${slot}" ${sq.length > 1 ? `data-position="${POSITIONS[display.layout[i] ^ (flipped ? 1 : 0)][slot]}"` : ""} viewBox=`,
+            `data-slot="${slot}" data-veteran="${display.veteran[i][slot]}" ${sq.length > 1 ? `data-position="${POSITIONS[display.layout[i] ^ (flipped ? 1 : 0)][slot]}"` : ""} viewBox=`,
           ),
         )
         .join("");
-      return `<button class="${classes}" data-index="${i}" tabindex="${i === activeCell ? 0 : -1}" aria-label="${squareName(i)}, ${unitText}${sq.length ? `, faces rank ${side(sq[0]) > 0 ? 8 : 1}` : ""}${targets.length ? ", legal destination" : ""}" aria-pressed="${isSelected}">${sq.length ? `<span class="piece-base"></span><span class="piece-code">${sq.map(code).join("·")}</span><span class="facing-indicator" aria-hidden="true">${side(sq[0]) * (flipped ? -1 : 1) > 0 ? "↑" : "↓"}</span>` : ""}${arts}${sq.length > 1 ? `<span class="stack-badge">${display.layout[i] < 2 ? "N–S" : "E–W"}</span>` : ""}${targets.length ? `<span class="target-marks">${[...new Set(targets.map((a) => a[5]))].map((k) => `<i class="${(isShot(k) ? "range" : ["move", "attack", "range", "faith"][k])}-dot"></i>`).join("")}</span>` : ""}</button>`;
+      return `<button class="${classes}" data-index="${i}" tabindex="${i === activeCell ? 0 : -1}" aria-label="${squareName(i)}, ${unitText}${sq.length ? `, faces rank ${side(sq[0]) > 0 ? 8 : 1}` : ""}${targets.length ? ", legal destination" : ""}" aria-pressed="${isSelected}">${sq.length ? `<span class="piece-base"></span><span class="piece-code">${sq.map((u, slot) => code(u) + (display.veteran[i][slot] ? "↶" : "")).join("·")}</span><span class="facing-indicator" aria-hidden="true">${side(sq[0]) * (flipped ? -1 : 1) > 0 ? "↑" : "↓"}</span>` : ""}${arts}${sq.length > 1 ? `<span class="stack-badge">${display.layout[i] < 2 ? "N–S" : "E–W"}</span>` : ""}${targets.length ? `<span class="target-marks">${[...new Set(targets.map((a) => a[5]))].map((k) => `<i class="${(isShot(k) ? "range" : ["move", "attack", "range", "faith"][k])}-dot"></i>`).join("")}</span>` : ""}</button>`;
     })
     .join("");
   $("#rank-labels").innerHTML = Array.from(
@@ -545,6 +545,12 @@ function renderSelection(display) {
   $("#selected-description").textContent = descriptions[code(unit)];
   $("#unit-facts").innerHTML =
     `<span>${HOST(side(unit))} · faces rank ${side(unit) > 0 ? 8 : 1} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "B" : "A"} unit at ${POSITIONS[display.layout[selected.index]][selected.slot]}` : ""}</span><br><span>${isSpectating() ? "Spectator view · the AI controls this unit." : side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
+  if (display.veteran[selected.index][selected.slot])
+    $("#unit-facts").innerHTML += "<br><strong>Veteran · permanently able to move backward, including diagonals.</strong>";
+  if (code(unit) === "K") {
+    const peril = enemyNear(display, selected.index >> 3, selected.index % 8, side(unit), 2);
+    $("#unit-facts").innerHTML += `<br><strong>${peril ? "In peril · backward movement available." : "No nearby enemy · backward movement unavailable."}</strong><br>${sq.length === 2 ? "Royal escort active: front holds; matching flank attackers cancel with the escort. Rear follows placement." : "No escort · the King cannot defend itself."}`;
+  }
   if (sq.length > 1) {
     $("#slot-controls").innerHTML =
       `<div class="slot-buttons" aria-label="Choose formation member">${sq.map((u, slot) => `<button data-select-slot="${slot}" class="${selected.slot === slot ? "active" : ""}" aria-pressed="${selected.slot === slot}">${slot ? "B" : "A"} · ${label(u)} · ${POSITIONS[display.layout[selected.index]][slot]}</button>`).join("")}</div>`;
@@ -938,18 +944,19 @@ function showResult() {
       : `The ${HOST(state.winner)} prevails`;
   const reason =
     {
-      commander_capture: "The opposing Commander has fallen.",
+      commander_capture: "The opposing King has fallen.",
       lone_commander:
-        "The opposing Commander has no surviving units to command.",
+        "The opposing King has no surviving units to command.",
       both_commanders_alone:
-        "Both armies were reduced to lone Commanders simultaneously.",
+        "Both armies were reduced to lone Kings simultaneously.",
+      king_move_forfeit: "The opposing King moved on four consecutive army turns and forfeits.",
       commander_retreat_forfeit:
-        "The opposing Commander retreated on three consecutive army turns and forfeits.",
+        "The opposing King retreated on three consecutive army turns and forfeits.",
       stagnation: "The opposing army has no legal order remaining.",
       threefold_repetition:
-        "The same board, formations, side to move, and Commander retreat counts have occurred three times.",
-      resignation: "The opposing Commander has conceded the battle.",
-      both_commanders_absent: "Both Commanders are absent.",
+        "The same board, formations, side to move, veteran abilities, and both King counters have occurred three times.",
+      resignation: "The opposing King has conceded the battle.",
+      both_commanders_absent: "Both Kings are absent.",
     }[state.reason] || "The battle is over.";
   if (state.winner !== 0) audio.effect("victory");
   openModal(
@@ -1102,13 +1109,13 @@ function guide(tab = "essentials") {
       )
       .join(
         "",
-      )}</tbody></table></div><div class="guide-prose"><h3>S · Guarded stance</h3><p>For matching ordinary classes: directly ahead (2), defender wins; front diagonals (1, 3), both die; sides and rear (4, 6, 7, 8, 9), attacker wins. Use the starting square in the defender’s facing frame. Class counters take priority from every direction. Formation layout determines contact; only matching ordinary classes receive stance benefits.</p><h3>Formation contact</h3><p>There are no class-counter overrides. A transverse E–W line braces its full front arc (1, 2, 3): both defenders fight, and a matching class meets guarded stance. From its direct rear (8), both are exposed. An N–S column meets flank attacks with both units.</p><p>Other approaches meet the nearest subcell first. A surviving attacker continues against the reserve, which turns to guarded stance. Each duel still obeys the class counter; there is no fatigue penalty. Simultaneous contacts apply both duels’ casualties together. Capturing an encountered Commander wins even if its companion survives or kills the attacker.</p></div>`;
+      )}</tbody></table></div><div class="guide-prose"><h3>S · Guarded stance</h3><p>For matching ordinary classes: directly ahead (2), defender wins; front diagonals (1, 3), both die; sides and rear (4, 6, 7, 8, 9), attacker wins. Use the starting square in the defender’s facing frame. Class counters take priority from every direction. Formation layout determines contact; only matching ordinary classes receive stance benefits.</p><h3>Formation contact</h3><p>There are no class-counter overrides. A transverse E–W line braces its full front arc (1, 2, 3): both defenders fight, and a matching class meets guarded stance. From its direct rear (8), both are exposed. An N–S column meets flank attacks with both units.</p><p>Other approaches meet the nearest subcell first. A surviving attacker continues against the reserve, which turns to guarded stance. Each duel still obeys the class counter; there is no fatigue penalty. Simultaneous contacts apply both duels’ casualties together. Capturing an encountered King wins even if its companion survives or kills the attacker. A King formation makes a front/flank exception: its escort fights first in every arrangement; matching front attacks lose, matching flank attacks cancel only the attacker and escort. Class counters and rear contact stay unchanged.</p></div>`;
   else
-    content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the Commander, leave it as the last enemy unit, or force a retreat forfeit to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement and retreat</h3><p>Units step straight or diagonally forward. Cavalry may take two forward steps through an empty square or one ally. The intermediate ally stays in place. Enemies and full formations block passage; movement stops after combat. To attack, any unit may approach from any direction, with Cavalry taking up to two steps. With an enemy directly one square ahead, any unit may step sideways onto an empty square or one ally; full friendly formations block the step. A diagonal enemy alone does not grant this evasion. In the enemy half, units except the Commander can also step sideways. At the enemy back rank, every class can step once in any direction. A Priestess may retreat when an enemy is adjacent; a Commander may retreat when an enemy is within two squares in any direction, regardless of blockers.</p><h3>Hold the front. Turn the flank.</h3><p>Matching Pikemen, Cavalry, Archers in melee, and Infantry use the defender’s stance. From directly ahead (cell 2), the defender wins; from front diagonals (1 or 3), both die; from the sides or rear (4, 6, 7, 8, 9), the attacker wins. Use the attack’s starting square, even for Cavalry. Formation layout determines which defenders engage. A reserve may turn, but class counters always take priority. Priestesses still cancel, Commander capture still wins, and class counters remain unchanged.</p><p>Board arrows show facing: Azure faces rank 8; Ember faces rank 1. Facing follows ownership, not the last move. Rotating the board does not change it.</p><h3>Two units. One formation.</h3><p>Move onto one ally to form a company. The resident is A and the arrival B, initially in N–S order with A forward. Either member can act; choose A or B in the unit panel or press B on the board. Before your normal order, rearrange up to three distinct existing formations into any A/B arrangement across N–S or E–W. Each formation may rearrange once; it is optional and never replaces the normal order. A formation created by that order waits until your next turn to rearrange. Moving or losing either member dissolves the formation. Your attacking companion stays behind.</p><h3>Arrows and allegiance</h3><p>An Archer shoots one or two squares along any straight or diagonal ray. Any occupied square blocks further fire. A shot kills one exposed Pikeman, Archer, or Priestess. The nearer subcell screens the farther one; if both are exposed, choose an eligible target. An ineligible front screen blocks the shot. Two Archers together can also shoot Cavalry and Heavy Infantry. Shooting an Archer causes return fire: both the target and the actual shooter die, including a B-member shooter. Companions survive. Other shots kill only the selected exposed defender. Shooting never moves an Archer and never kills a Commander.</p><p>A Priestess converts an adjacent solitary Pikeman, Cavalry, Archer, or Heavy Infantry in place. Converted units immediately use their new side’s direction. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize Commander deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>Commander capture wins first. Three consecutive backward Commander movements on that army’s turns forfeit; backward diagonals count. Another unit’s order or a non-backward Commander order resets the streak; the opponent’s turns preserve it. Combat that leaves the Commander at its origin is not a retreat. Next, an army reduced to its lone Commander loses; both alone simultaneously is a draw. An army with no legal order loses. The third occurrence of identical physical unit positions, ownership, side to move, and retreat counters is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one complete turn in local play. With preparations pending, Undo cancels those preparations first. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
+    content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the King, leave it as the last enemy unit, or force a retreat forfeit to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement and retreat</h3><p>Units step straight or diagonally forward. Cavalry may take two forward steps through an empty square or one ally. The intermediate ally stays in place. Enemies and full formations block passage; movement stops after combat. To attack, any armed unit may approach from any direction, with Cavalry taking up to two steps. With an enemy directly one square ahead, any unit may step sideways onto an empty square or one ally; full friendly formations block the step. A diagonal enemy alone does not grant this evasion. In the enemy half, units except the King can also step sideways. A non-King unit that reaches the enemy back rank by movement or capture permanently gains backward movement, including diagonals. Cavalry retains its two-step reach: two forward or two backward steps, passing one ally as usual. A ↶ mark identifies veterans; the ability follows the unit through formations and conversion. A Priestess may retreat when an enemy is adjacent; a King may retreat when an enemy is within two squares in any direction, regardless of blockers. The King has no back-rank exception, can never attack, and is immune to arrows and conversion.</p><h3>Hold the front. Turn the flank.</h3><p>Matching Pikemen, Cavalry, Archers in melee, and Infantry use the defender’s stance. From directly ahead (cell 2), the defender wins; from front diagonals (1 or 3), both die; from the sides or rear (4, 6, 7, 8, 9), the attacker wins. Use the attack’s starting square, even for Cavalry. Formation layout determines which defenders engage. A reserve may turn, but class counters always take priority. Priestesses still cancel, King capture still wins, and class counters remain unchanged.</p><p>Board arrows show facing: Azure faces rank 8; Ember faces rank 1. Facing follows ownership, not the last move. Rotating the board does not change it.</p><h3>Two units. One formation.</h3><p>Move onto one ally to form a company. The resident is A and the arrival B, initially in N–S order with A forward. Either member can act; choose A or B in the unit panel or press B on the board. Before your normal order, rearrange up to three distinct existing formations into any A/B arrangement across N–S or E–W. Each formation may rearrange once; it is optional and never replaces the normal order. A formation created by that order waits until your next turn to rearrange. Moving or losing either member dissolves the formation. Your attacking companion stays behind.</p><h3>The royal escort</h3><p>Any King formation arrangement grants its companion support. Against front or flank attacks (1, 2, 3, 4, 6), the escort fights first. For matching ordinary classes, front diagonals now defend like cell 2, and flank attacks kill both attacker and escort while the King survives. If a class counter defeats the escort and the attacker survives, it reaches the defenseless King. Rear attacks retain physical contact and ready-reserve rules. The King’s rear placement is a recommendation, never a requirement.</p><h3>Arrows and allegiance</h3><p>An Archer shoots exactly one square along any straight or diagonal ray. Any occupied square blocks further fire. A shot kills one exposed Pikeman, Archer, or Priestess. The nearer subcell screens the farther one; if both are exposed, choose an eligible target. An ineligible front screen blocks the shot. Two Archers together can also shoot Cavalry and Heavy Infantry, still only one square away. Shooting an Archer causes return fire: both the target and the actual shooter die, including a B-member shooter. Companions survive. Other shots kill only the selected exposed defender. Shooting never moves an Archer and never kills a King.</p><p>A Priestess converts an adjacent solitary Pikeman, Cavalry, Archer, or Heavy Infantry in place. Converted units immediately use their new side’s direction. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize King deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>King capture wins first. Three consecutive backward King movements on that army’s turns forfeit; backward diagonals count. Another unit’s order or a non-backward King order resets the streak; the opponent’s turns preserve it. The fourth consecutive King movement in any direction also forfeits. Another unit’s normal order resets both counters; a forward or sideways King move resets only the backward counter. Preparations affect neither counter. Next, an army reduced to its lone King loses; both alone simultaneously is a draw. An army with no legal order loses. The third occurrence of identical physical unit positions, ownership, side to move, veteran abilities, and both King counters is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one complete turn in local play. With preparations pending, Undo cancels those preparations first. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
   if (tab === "essentials")
     content += `<div class="guide-prose"><h3>Watch the commanders</h3><p>Choose Watch a battle in the war camp to let two AI armies play. Select Squire, Knight, or Marshal independently for each banner. Pause stops the next order; during a cinematic, Pause after this order lets the current encounter finish. Next order advances one turn while paused. Pace changes the interval between turns, while Settings controls animation length. You can inspect units, save, or review the chronicle while paused. Restored spectator games and returning from review stay paused until Resume. Switching to another tab also pauses playback.</p></div>`;
   openModal(
-    `<p class="eyebrow">Rules v4 · The commander’s companion</p><h2 id="modal-title">Field guide</h2><div class="guide-tabs">${tabs.map(([id, name]) => `<button data-guide="${id}" class="${id === tab ? "active" : ""}" aria-pressed="${id === tab}">${name}</button>`).join("")}</div>${content}`,
+    `<p class="eyebrow">Rules v5 · The royal escort</p><h2 id="modal-title">Field guide</h2><div class="guide-tabs">${tabs.map(([id, name]) => `<button data-guide="${id}" class="${id === tab ? "active" : ""}" aria-pressed="${id === tab}">${name}</button>`).join("")}</div>${content}`,
   );
   document
     .querySelectorAll("[data-guide]")

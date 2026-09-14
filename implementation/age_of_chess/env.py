@@ -1,14 +1,14 @@
-"""Rules-v4 engine with atomic validation, ordered friendly stacks and adjudication."""
+"""Rules-v5 engine with atomic validation, ordered friendly stacks and adjudication."""
 from __future__ import annotations
 import copy
 import numpy as np
 from .rules_loader import load_ruleset
 from .game_state import GameState, standard_setup
 from .movegen import gen_single_moves, gen_preparations, ALL_DIRS
-from .combat import resolve_melee, resolve_combat, attack_sector
+from .combat import resolve_melee, resolve_combat, attack_sector, canonical_layout
 from .utils import action_mask_from_legal, opponent, in_bounds, encode_action, is_preparation, is_shot, shot_slot
 
-OBSERVATION_SHAPE = (35, 8, 8)
+OBSERVATION_SHAPE = (41, 8, 8)
 
 class Engine:
     def __init__(self, ruleset_path="rulesets/default.yaml", *, rules=None):
@@ -29,7 +29,11 @@ class Engine:
         if (set(state.retreat_counts) != {"north", "south"} or
                 any(type(n) is not int or not 0 <= n <= 3 for n in state.retreat_counts.values()) or
                 all(n == 3 for n in state.retreat_counts.values())):
-            raise ValueError("Invalid Commander retreat counts")
+            raise ValueError("Invalid King retreat counts")
+        if (set(state.king_moves) != {"north", "south"} or
+                any(type(n) is not int or not 0 <= n <= 4 for n in state.king_moves.values()) or
+                all(n == 4 for n in state.king_moves.values())):
+            raise ValueError("Invalid King movement counts")
         if (not isinstance(state.prepared, list) or len(state.prepared) > 3 or
                 len(set(state.prepared)) != len(state.prepared) or any(
                     type(i) is not int or not 0 <= i < 64 or not state.board.grid[i//8][i%8].bottom
@@ -40,6 +44,7 @@ class Engine:
         self.state.winner = self.state.reason = None
         self.state.position_counts = {}
         self._priestess_deaths([])
+        self._mark_veterans()
         self.state.position_counts[self.state.position_key()] = 1
         self._adjudicate()
 
@@ -120,6 +125,7 @@ class Engine:
                     if unit:
                         channel = (0 if unit.side == agent else 12) + 6*slot + "PNBRQK".index(unit.code)
                         obs[channel, r, c] = 1
+                        obs[35 + (0 if unit.side == agent else 2) + slot, r, c] = unit.veteran
                 if sq.bottom:
                     obs[29+sq.layout, r, c] = 1
         for i in self.state.prepared:
@@ -132,7 +138,18 @@ class Engine:
         obs[26] = min(count/self.rules.game.repetition_draw, 1.0)
         obs[27] = self.state.retreat_counts[agent] / self.rules.game.commander_retreat_limit
         obs[28] = self.state.retreat_counts[opponent(agent)] / self.rules.game.commander_retreat_limit
+        obs[39] = self.state.king_moves[agent] / self.rules.game.king_move_limit
+        obs[40] = self.state.king_moves[opponent(agent)] / self.rules.game.king_move_limit
         return obs
+
+    def _mark_veterans(self):
+        """The ability belongs to the arriving unit, including after conversion."""
+        for r, row in enumerate(self.state.board.grid):
+            for sq in row:
+                for unit in (sq.top, sq.bottom):
+                    if unit and unit.code != "K" and r == (0 if unit.side == "north" else 7):
+                        unit.veteran = True
+                sq.layout = canonical_layout(sq.top, sq.bottom, sq.layout)
 
     def _priestess_deaths(self, losses):
         queens = [(r, c, slot, u) for r, row in enumerate(self.state.board.grid)
@@ -151,6 +168,8 @@ class Engine:
         seen = self.kings_present()
         retreat_loser = next((s for s, n in self.state.retreat_counts.items()
                              if n >= self.rules.game.commander_retreat_limit), None)
+        move_loser = next((s for s, n in self.state.king_moves.items()
+                          if n >= self.rules.game.king_move_limit), None)
         lone = {s: sum(u is not None and u.side == s for row in self.state.board.grid
                        for sq in row for u in (sq.top, sq.bottom)) == 1 for s in seen}
         if not all(seen.values()):
@@ -159,6 +178,8 @@ class Engine:
             self.state.reason = "commander_capture" if any(seen.values()) else "both_commanders_absent"
         elif retreat_loser:
             self.forfeit(retreat_loser, "commander_retreat_forfeit")
+        elif move_loser:
+            self.forfeit(move_loser, "king_move_forfeit")
         elif any(lone.values()):
             if all(lone.values()):
                 self.state.terminated = True
@@ -248,9 +269,13 @@ class Engine:
             event["convert"] = {"converted": dst.top.code, "previous_side": dst.top.side}
             dst.top.side = side
         self._priestess_deaths(event["losses"])
+        was_veteran = actor.veteran
+        self._mark_veterans()
+        event["veteran_unlocked"] = actor.veteran and not was_veteran
         backward = (tr-fr) * (1 if side == "north" else -1) > 0
         self.state.retreat_counts[side] = (self.state.retreat_counts[side]+1
             if code == "K" and event["moved"] and backward else 0)
+        self.state.king_moves[side] = self.state.king_moves[side]+1 if code == "K" and event["moved"] else 0
         self.state.prepared = []
         self.state.to_move = opponent(side)
         self.state.move_count += 1

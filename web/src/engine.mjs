@@ -12,7 +12,7 @@ export const squareName = (index) =>
   "abcdefgh"[index % 8] + (8 - Math.floor(index / 8));
 export const actionKey = (action) => action.join(",");
 export const positionKey = (state) =>
-  `${state.turn}|${state.retreats.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i])).join(";")}`;
+  `${state.turn}|${state.retreats.join(",")}|${state.kingMoves.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i], state.veteran[i])).join(";")}`;
 const inside = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
 const directions = [-1, 0, 1].flatMap((r) =>
   [-1, 0, 1].filter((c) => r || c).map((c) => [r, c]),
@@ -41,15 +41,19 @@ export function cloneState(state) {
     board: state.board.map((s) => [...s]),
     counts: { ...state.counts },
     retreats: [...state.retreats],
+    kingMoves: [...state.kingMoves],
+    veteran: state.veteran.map(s => [...s]),
     layout: [...state.layout],
     prepared: [...state.prepared],
   };
 }
 
-export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = []) {
+export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], veteran = null, kingMoves = [0, 0]) {
   const state = {
     board: board.map((s) => [...s]),
-    layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq)),
+    layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq, veteran?.[i])),
+    veteran: board.map((sq, i) => veteran?.[i] ? [...veteran[i]] : sq.map(() => false)),
+    kingMoves: [...kingMoves],
     prepared: [...prepared],
     turn,
     ply: 0,
@@ -60,6 +64,7 @@ export function studyState(board, turn = 1, retreats = [0, 0], layout = null, pr
   };
   validateState(state);
   priestessDeaths(state, []);
+  markVeterans(state);
   state.counts[positionKey(state)] = 1;
   adjudicate(state);
   return state;
@@ -79,7 +84,10 @@ export function validateState(s) {
     s.retreats.some((n) => !Number.isInteger(n) || n < 0 || n > 3) ||
     s.retreats.every((n) => n === 3)
   )
-    throw Error("Invalid Commander retreat counts");
+    throw Error("Invalid King retreat counts");
+  if (!Array.isArray(s.kingMoves) || s.kingMoves.length !== 2 ||
+    s.kingMoves.some(n => !Number.isInteger(n) || n < 0 || n > 4) || s.kingMoves.every(n => n === 4))
+    throw Error("Invalid King movement counts");
   const special = {};
   for (const sq of s.board) {
     if (
@@ -92,10 +100,14 @@ export function validateState(s) {
       throw Error("Mixed stack");
     for (const u of sq)
       if (Math.abs(u) >= 5 && (special[u] = (special[u] || 0) + 1) > 1)
-        throw Error("Duplicate Commander or Priestess");
+        throw Error("Duplicate King or Priestess");
   }
+  if (!Array.isArray(s.veteran) || s.veteran.length !== 64 || s.veteran.some((sq, i) =>
+    !Array.isArray(sq) || sq.length !== s.board[i].length || sq.some((v, slot) =>
+      typeof v !== "boolean" || (v && code(s.board[i][slot]) === "K"))))
+    throw Error("Invalid veteran state");
   if (!Array.isArray(s.layout) || s.layout.length !== 64 || s.layout.some((l, i) =>
-    !Number.isInteger(l) || (s.board[i].length < 2 ? l !== -1 : l < 0 || l > 3 || canonicalLayout(s.board[i], l) !== l)))
+    !Number.isInteger(l) || (s.board[i].length < 2 ? l !== -1 : l < 0 || l > 3 || canonicalLayout(s.board[i], l, s.veteran[i]) !== l)))
     throw Error("Invalid formation layout");
   if (!Array.isArray(s.prepared) || s.prepared.length > RULES.formation_rearrangements || new Set(s.prepared).size !== s.prepared.length || s.prepared.some(i =>
     !Number.isInteger(i) || i < 0 || i >= 64 || s.board[i].length !== 2 || side(s.board[i][0]) !== s.turn))
@@ -119,7 +131,7 @@ export function melee(actor, top, bottom, from, to, layout) {
   return [result.alive, result.survive[0], result.survive[1] || false];
 }
 
-function enemyNear(state, r, c, owner, radius) {
+export function enemyNear(state, r, c, owner, radius) {
   for (let rr = Math.max(0, r - radius); rr <= Math.min(7, r + radius); rr++)
     for (
       let cc = Math.max(0, c - radius);
@@ -159,7 +171,8 @@ export function unfilteredActions(state) {
         )
           add(rr, cc, 1);
       };
-      for (const [dr, dc] of dirs) {
+      const groups = [dirs, ...(state.veteran[index][slot] ? [dirs.map(([dr, dc]) => [-dr, dc])] : [])];
+      for (const group of groups) for (const [dr, dc] of group) {
         const rr = r + dr,
           cc = c + dc;
         if (!inside(rr, cc)) continue;
@@ -168,7 +181,7 @@ export function unfilteredActions(state) {
           movement.max_steps === 2 &&
           cavalryPassable(state.board[rr * 8 + cc], owner)
         )
-          for (const [dr2, dc2] of dirs) destination(rr + dr2, cc + dc2);
+          for (const [dr2, dc2] of group) destination(rr + dr2, cc + dc2);
       }
       let extra = [];
       if (movement.last_rank_all_directions && r === (owner === 1 ? 0 : 7))
@@ -292,7 +305,7 @@ function ownDeaths(state, action) {
 export function preparationActions(state) {
   if (state.winner !== null || state.prepared.length >= RULES.formation_rearrangements) return [];
   return state.board.flatMap((sq, i) => sq.length === 2 && side(sq[0]) === state.turn && !state.prepared.includes(i)
-    ? [0, 1, 2, 3].filter(l => l !== state.layout[i] && canonicalLayout(sq, l) === l)
+    ? [0, 1, 2, 3].filter(l => l !== state.layout[i] && canonicalLayout(sq, l, state.veteran[i]) === l)
       .map(l => [i >> 3, i % 8, 0, i >> 3, i % 8, 4 + l]) : []);
 }
 
@@ -344,6 +357,7 @@ function priestessDeaths(state, losses) {
     .sort((a, b) => b.i - a.i || b.slot - a.slot)
     .forEach((q) => {
       state.board[q.i].splice(q.slot, 1);
+      state.veteran[q.i].splice(q.slot, 1);
       state.layout[q.i] = -1;
       losses.push({
         unit: q.u,
@@ -354,6 +368,15 @@ function priestessDeaths(state, losses) {
     });
 }
 
+function markVeterans(state) {
+  state.board.forEach((sq, i) => {
+    sq.forEach((u, slot) => {
+      if (code(u) !== "K" && (i >> 3) === (u > 0 ? 0 : 7)) state.veteran[i][slot] = true;
+    });
+    state.layout[i] = canonicalLayout(sq, state.layout[i], state.veteran[i]);
+  });
+}
+
 function adjudicate(state) {
   const north = state.board.some((s) => s.includes(6)),
     south = state.board.some((s) => s.includes(-6));
@@ -361,6 +384,7 @@ function adjudicate(state) {
     (n) => n >= RULES.commander_retreat_limit,
   );
   const units = state.board.flat();
+  const moveLoser = state.kingMoves.findIndex(n => n >= RULES.king_move_limit);
   const loneNorth = units.filter((u) => u > 0).length === 1,
     loneSouth = units.filter((u) => u < 0).length === 1;
   if (!north || !south) {
@@ -370,6 +394,9 @@ function adjudicate(state) {
   } else if (retreatLoser >= 0) {
     state.winner = retreatLoser === 0 ? -1 : 1;
     state.reason = "commander_retreat_forfeit";
+  } else if (moveLoser >= 0) {
+    state.winner = moveLoser === 0 ? -1 : 1;
+    state.reason = "king_move_forfeit";
   } else if (loneNorth || loneSouth) {
     state.winner = loneNorth && loneSouth ? 0 : loneNorth ? -1 : 1;
     state.reason =
@@ -416,7 +443,13 @@ export function transition(state, action, trusted = false) {
   };
   const remove = (sq, at, index, cause) => {
     const [unit] = sq.splice(index, 1);
+    next.veteran[at].splice(index, 1);
     event.losses.push({ unit, at, slot: index, cause });
+  };
+  const advance = () => {
+    dst.push(...src.splice(slot, 1));
+    next.veteran[to].push(...next.veteran[from].splice(slot, 1));
+    event.moved = true;
   };
   if (isPreparation(kind)) {
     event.previousLayout = next.layout[from];
@@ -428,8 +461,7 @@ export function transition(state, action, trusted = false) {
     return { state: next, event };
   }
   if (kind === 0) {
-    dst.push(...src.splice(slot, 1));
-    event.moved = true;
+    advance();
   } else if (kind === 1) {
     event.approach = attackSector(from, to, dst[0]);
     const resolution = resolveCombat(actor, dst, from, to, state.layout[to]);
@@ -441,8 +473,7 @@ export function transition(state, action, trusted = false) {
     if (!top) remove(dst, to, 0, "melee");
     if (!alive) remove(src, from, slot, "melee");
     else if (!dst.length) {
-      dst.push(...src.splice(slot, 1));
-      event.moved = true;
+      advance();
     }
   } else if (isShot(kind)) {
     event.targetSlot = shotSlot(kind);
@@ -456,15 +487,18 @@ export function transition(state, action, trusted = false) {
     event.converted = dst[0];
     dst[0] *= -1;
   }
-  next.layout[from] = canonicalLayout(src, next.layout[from]);
-  next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst) : canonicalLayout(dst, next.layout[to]);
+  next.layout[from] = canonicalLayout(src, next.layout[from], next.veteran[from]);
+  next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst, next.veteran[to]) : canonicalLayout(dst, next.layout[to], next.veteran[to]);
   next.prepared = [];
   priestessDeaths(next, event.losses);
+  markVeterans(next);
+  event.veteranUnlocked = event.moved && code(actor) !== "K" && !state.veteran[from][slot] && rr === (state.turn === 1 ? 0 : 7) && dst.includes(actor);
   const retreatIndex = state.turn === 1 ? 0 : 1;
   next.retreats[retreatIndex] =
     code(actor) === "K" && event.moved && (rr - r) * state.turn > 0
       ? next.retreats[retreatIndex] + 1
       : 0;
+  next.kingMoves[retreatIndex] = code(actor) === "K" && event.moved ? next.kingMoves[retreatIndex] + 1 : 0;
   next.turn *= -1;
   next.ply++;
   const key = positionKey(next);
@@ -487,7 +521,7 @@ export function describeEvent(event) {
       : `${who} fires at ${destination}. ${event.losses.map((l) => label(l.unit)).join(" and ")} ${event.losses.length === 1 ? "falls" : "fall"}.`;
   if (event.kind === 1) {
     const losses = event.losses.map((l) => label(l.unit)).join(" and ");
-    return `${who} attacks ${destination}.${event.formation.mode === "serial" ? " The reserve turns and engages." : event.formation.mode === "braced_line" ? " Both defenders brace the front." : event.formation.mode === "simultaneous" ? " Both defenders engage together." : event.stance ? ` ${approachLabel(event.approach)}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}`;
+    return `${who} attacks ${destination}.${event.formation.mode === "king_guard" ? " The King's escort engages first." : event.formation.mode === "serial" ? " The reserve turns and engages." : event.formation.mode === "braced_line" ? " Both defenders brace the front." : event.formation.mode === "simultaneous" ? " Both defenders engage together." : event.stance ? ` ${approachLabel(event.approach)}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}${event.veteranUnlocked ? " Backward movement is now permanent." : ""}`;
   }
-  return `${who} ${event.defender.length ? "joins the formation at" : "advances to"} ${destination}.${event.losses.length ? " Opposing Priestesses fall together." : ""}`;
+  return `${who} ${event.defender.length ? "joins the formation at" : "advances to"} ${destination}.${event.losses.length ? " Opposing Priestesses fall together." : ""}${event.veteranUnlocked ? " Backward movement is now permanent." : ""}`;
 }

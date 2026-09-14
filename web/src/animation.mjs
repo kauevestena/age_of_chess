@@ -215,7 +215,7 @@ export class CombatDirector {
               Math.max(Math.abs(rr - mr), Math.abs(cc - mc)) === 1 &&
               cavalryPassable(before.board[mr * 8 + mc], before.turn) &&
               (event.kind === 1 ||
-                (mr === r - before.turn && rr === mr - before.turn)),
+                (mr === r + Math.sign(rr - r) && rr === mr + Math.sign(rr - r))),
           );
         if (midCell) {
           const [midr, midc] = midCell;
@@ -383,7 +383,7 @@ export class CombatDirector {
         const targets = wave.slots.map(slot => stage.querySelector(`[data-defender-slot="${slot}"]`));
         const target = targets[0];
         const destination = Math.max(18, target.offsetLeft - a.offsetLeft - a.offsetWidth + 45);
-        phase.textContent = wave.reserve ? "The reserve turns to meet the attacker"
+        phase.textContent = event.formation.mode === "king_guard" && !wave.reserve ? "The royal escort meets the attack" : wave.reserve && code(event.defender[wave.slots[0]]) === "K" ? "The King is defenseless" : wave.reserve ? "The reserve turns to meet the attacker"
           : targets.length === 2 ? event.formation.mode === "braced_line" ? "Both defenders brace the front" : "Both exposed defenders engage"
           : event.defender.length === 2 ? `Unit ${wave.slots[0] ? "B" : "A"} meets the attack` : "The lines meet";
         if (wave.reserve) {
@@ -395,7 +395,7 @@ export class CombatDirector {
           { transform: `translate(${(advance+destination)/2}px,-8px)`, offset: .5 },
           { transform: `translate(${destination}px,0)` }], 500);
         for (const [j, el] of targets.entries()) {
-          this.animate(el.querySelector(".weapon"), [{ transform: "rotate(0)" },
+          if (code(event.defender[wave.slots[j]]) !== "K") this.animate(el.querySelector(".weapon"), [{ transform: "rotate(0)" },
             { transform: `rotate(${code(event.defender[wave.slots[j]]) === "P" ? -42 : -16}deg)` }], 400);
           this.particles.burst(el.offsetLeft + 25, this.particles.height - 24, "dust", 15);
         }

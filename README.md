@@ -1,14 +1,16 @@
 # Age of Chess – Warfare
 
 A simulator-first tactical chess variant with stacking, ranged attacks, conversion,
-class counters and capture-the-Commander victory. See [the complete rules](rulesets/RULES.md).
+class counters and capture-the-King victory. See [the complete rules](rulesets/RULES.md).
 
-**Rules v4:** formations arrange A/B across N–S or E–W. Rearrange up to three
-formations before one mandatory normal order. Physical contact determines whether
-both defenders engage or a ready reserve follows; class counters always take
-priority, including Pikeman over Cavalry from the rear. Arrows target exposed
-members. All v3 movement, guarded stance, return-fire, lone-Commander and retreat
-rules remain. See [the v4 implementation review](web/review/FORMATIONS_V4.md).
+**Rules v5:** the Commander becomes a defenseless King. Its formation escort fights
+first against front/flank attacks, with stronger matching-class defense; unit
+counters and rear contact remain unchanged. Archers have one-square range, including
+double-Archers. Non-Kings permanently gain backward movement after reaching the
+far rank. Kings retreat only in peril, forfeit on a third consecutive backward move
+or fourth consecutive move in any direction, and still lose when unsupported.
+All four A/B arrangements and three optional preparations remain. See the
+[v5 implementation and simulation review](web/review/KINGS_V5.md).
 
 ## Browser game
 
@@ -71,11 +73,12 @@ There are 73,728 encoded action IDs. Use `encode_action(*action)`
 for the discrete interface. Illegal direct-engine actions raise before mutation;
 illegal training-interface actions forfeit, without silently executing another move.
 
-The observation has shape `(35, 8, 8)` and dtype `float32`. Planes 0–23 encode
+The observation has shape `(41, 8, 8)` and dtype `float32`. Planes 0–23 encode
 own/opponent A/B classes; 24–28 hold direction, side to move, repetition and both
-Commander retreat counters. Planes 29–32 identify the four physical arrangements,
+King retreat counters. Planes 29–32 identify the four physical arrangements,
 33 marks formations already prepared this turn, and 34 holds the remaining budget
-normalized by three. Coordinates are **absolute**, matching action IDs.
+normalized by three. Planes 35–38 encode own A/B and enemy A/B veteran flags;
+39–40 encode own/enemy King movement streaks divided by four. Coordinates are **absolute**, matching action IDs.
 Full repetition history is available in `info['position_counts']`; the observation
 alone does not encode every past position. Inactive/finished masks contain zeros.
 Rewards are per-step, terminal-only and zero-sum. A preparation returns zero reward
@@ -87,7 +90,7 @@ rewards do not pay capture/conversion bonuses that can be farmed in a loop.
 
 The old `age_of_chess_v0` name remains an import alias only. Old YAML files and
 checkpoints need migration/retraining: the action layout and observation changed.
-Do not compare old reward-adjudicated league records with v4 results.
+Do not compare old reward-adjudicated league records with v5 results.
 
 ## Training and evaluation
 
@@ -106,7 +109,7 @@ python -m implementation.league.report
 ```
 
 MaskablePPO is preferred; the unmasked A2C baseline may repeatedly forfeit by
-sampling illegal actions. The league loads both flat and tensor v4 checkpoints.
+sampling illegal actions. The league loads both flat and tensor v5 checkpoints.
 It records draws and truncations distinctly and excludes unresolved/legacy records
 from ratings. Greedy uses seeded random tie breaks, not coordinate-order ties.
 

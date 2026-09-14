@@ -25,7 +25,7 @@ class MoveSpec(StrictModel):
 
 class AbilitySpec(StrictModel):
     name: Literal["ranged", "power_shot", "convert"]
-    range: int = Field(ge=1, le=2)
+    range: Literal[1]
     targets: list[str]
     requires_stack_size: int = Field(default=1, ge=1, le=2)
 
@@ -34,7 +34,7 @@ class AbilitySpec(StrictModel):
         if any(c not in CODES for c in self.targets):
             raise ValueError("unknown ability target")
         if "K" in self.targets or (self.name == "convert" and "Q" in self.targets):
-            raise ValueError("Commanders cannot be shot/converted; Priestesses cannot be converted")
+            raise ValueError("Kings cannot be shot/converted; Priestesses cannot be converted")
         if self.name == "convert" and (self.range != 1 or self.requires_stack_size != 1):
             raise ValueError("conversion is an adjacent single-unit ability")
         if self.name == "power_shot" and self.requires_stack_size != 2:
@@ -75,10 +75,13 @@ class CombatSpec(StrictModel):
 
 class GameSpec(StrictModel):
     name: str
-    version: Literal[4]
+    version: Literal[5]
     attack_all_directions: Literal[True]
     lone_commander_loses: Literal[True]
     commander_retreat_limit: Literal[3]
+    king_move_limit: Literal[4]
+    permanent_backward_movement: Literal[True]
+    king_formation_guard: Literal["escort_first"]
     archer_return_fire: Literal[True]
     same_type_stance: Literal["guarded_center"]
     frontal_enemy_sidesteps: Literal[True]
@@ -98,8 +101,13 @@ class GameSpec(StrictModel):
         for row in self.combat.single.values():
             if set(row) != set(CODES):
                 raise ValueError("single combat matrix must specify all 36 ordered pairs")
-        if any(row["K"] != "win" for row in self.combat.single.values()):
-            raise ValueError("Commander capture must be a win for every attacker")
+        if any(row["K"] != "win" for code, row in self.combat.single.items() if code != "K"):
+            raise ValueError("King capture must be a win for every armed attacker")
+        if any(result != "illegal" for result in self.combat.single["K"].values()):
+            raise ValueError("Kings are defenseless and cannot attack")
+        king = self.pieces["K"].move
+        if king.last_rank_all_directions or king.retreat_trigger != "nearby_enemy" or king.threat_radius != 2:
+            raise ValueError("Kings may retreat only within two squares of an enemy")
         for actor, row in self.combat.single.items():
             for defender, result in row.items():
                 if (result == "stance") != (actor == defender and actor in "PNBR"):
@@ -110,7 +118,7 @@ class GameSpec(StrictModel):
         for actor in "PNBR":
             for defender in "PNBR":
                 if actor != defender and self.combat.single[actor][defender] != ("win" if (actor, defender) in wins else "lose"):
-                    raise ValueError("Rules v4 requires unconditional ordinary-class counters")
+                    raise ValueError("Rules v5 requires unconditional ordinary-class counters")
         for code, piece in self.pieces.items():
             names = [a.name for a in piece.abilities]
             if len(set(names)) != len(names):

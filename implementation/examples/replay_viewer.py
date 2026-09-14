@@ -36,7 +36,7 @@ def draw_board(screen, env):
                     x,y = c*TILE+TILE//2+dx, r*TILE+TILE//2+dy
                     col = COLORS[u.side]
                     pygame.draw.circle(screen, col, (x,y), 16)
-                    txt = font.render(SYMBOL[u.code], True, COLORS["text"])
+                    txt = font.render(SYMBOL[u.code] + ("*" if u.veteran else ""), True, COLORS["text"])
                     screen.blit(txt, (x-7,y-12))
 
 def load_events(jsonl_path):
@@ -45,8 +45,8 @@ def load_events(jsonl_path):
         for line in f:
             if not line.strip(): continue
             rec = json.loads(line)
-            if rec.get("rules_version") != 4:
-                raise ValueError("This log predates rules v4 and cannot be replayed safely")
+            if rec.get("rules_version") != 5:
+                raise ValueError("This log predates rules v5 and cannot be replayed safely")
             events.append(rec)
     return events
 

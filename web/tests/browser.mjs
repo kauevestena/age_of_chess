@@ -203,7 +203,7 @@ try {
   );
   await page.locator("#next-lesson").click();
   await page.locator('[data-select-slot="1"]').click();
-  await cell(page, 20).click();
+  await cell(page, 28).click();
   await page.getByRole("button", { name: /Ranged attack/ }).click();
   await page.locator("#battle-dialog").waitFor({ state: "visible" });
   await page.locator("#skip-battle").click();
@@ -302,7 +302,7 @@ try {
   );
   await page.locator("#next-lesson").click();
   await page.locator('[data-select-slot="1"]').click();
-  await cell(page, 20).click();
+  await cell(page, 28).click();
   await page.getByRole("button", { name: /Ranged attack/ }).click();
   await page.locator("#battle-dialog").waitFor({ state: "visible" });
   await page.locator(".return-arrow").waitFor({ state: "attached" });
@@ -311,7 +311,7 @@ try {
   check(
     (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman") &&
       !(await cell(page, 36).getAttribute("aria-label")).includes("Archer") &&
-      !(await cell(page, 20).getAttribute("aria-label")).includes("Archer"),
+      !(await cell(page, 28).getAttribute("aria-label")).includes("Archer"),
     "return fire removes both selected Archers",
   );
   await page.locator("#next-lesson").click();
@@ -328,6 +328,27 @@ try {
   await waitIdle(page);
   check((await cell(page, 28).getAttribute("aria-label")).includes("empty") && (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman"), "rear attack cannot reverse Cavalry counter");
   await page.locator("#next-lesson").click();
+  await cell(page, 13).click(); await waitIdle(page);
+  check((await cell(page,13).getAttribute("aria-label")).includes("veteran"), "backward ability stays after leaving the last rank");
+  check((await cell(page,13).locator('[data-slot="0"]').getAttribute("data-veteran")) === "true", "veteran flag is rendered per unit");
+  await page.screenshot({path:resolve(out,"veteran-return.png"),fullPage:true});
+  await page.locator("#next-lesson").click();
+  await cell(page,28).click(); await page.getByRole("button",{name:/Melee attack/}).click();
+  await page.locator("#battle-dialog").waitFor({state:"visible"});
+  await page.waitForFunction(()=>document.querySelector("#encounter-phase").textContent.includes("royal escort"));
+  await page.screenshot({path:resolve(out,"royal-escort.png")});
+  await waitIdle(page);
+  check((await cell(page,28).locator(".unit-art").count())===2,"King buff preserves escort against matching front diagonal");
+  await page.locator("#next-lesson").click();
+  await cell(page,35).click(); await page.getByRole("button",{name:/Melee attack/}).click();
+  await waitIdle(page);
+  check((await cell(page,35).getAttribute("aria-label")).includes("King") && (await cell(page,35).locator(".unit-art").count())===1,"matching flank exchange spares King");
+  check((await cell(page,36).locator(".unit-art").count())===0,"matching flank attacker dies with escort");
+  await page.locator("#next-lesson").click();
+  check((await page.locator("#commander-retreats").textContent()).includes("Azure 3/4"),"fourth royal order warning is visible");
+  await cell(page,54).click(); await waitIdle(page);
+  check((await page.locator("#tutorial-panel").textContent()).includes("fourth King movement forfeits"),"King movement forfeit is explained");
+  await page.locator("#next-lesson").click();
   await cell(page, 28).click();
   await page.getByRole("button", { name: /Melee attack/ }).click();
   await page.locator("#battle-dialog").waitFor({ state: "visible" });
@@ -340,7 +361,7 @@ try {
     "tutorial completed",
   );
   await page.locator("#next-lesson").click();
-  // Restore a legal history containing a bottom-slot Commander retreat.
+  // Restore a legal history containing a bottom-slot King retreat.
   const retreatRecord = createRecord(
     [
       [6, 4, 0, 5, 4, 0],
@@ -356,14 +377,14 @@ try {
   await page
     .locator("#file-input")
     .setInputFiles({
-      name: "retreat-v3.json",
+      name: "retreat-v5.json",
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(retreatRecord)),
     });
   await page.locator("#game").waitFor({ state: "visible" });
   check(
     (await page.locator("#commander-retreats").textContent()).includes(
-      "Azure 1/3",
+      "Azure 3/4 (backward 1/3)",
     ),
     "restored retreat counter visible",
   );
@@ -379,7 +400,7 @@ try {
   await page.locator("#undo-button").click();
   check(
     (await page.locator("#commander-retreats").textContent()).includes(
-      "Azure 0/3",
+      "Azure 2/4 (backward 0/3)",
     ),
     "undo restores retreat count",
   );
@@ -404,7 +425,7 @@ try {
   await page.locator("#continue").click();
   check(
     (await page.locator("#toast").textContent()).includes(
-      "Rules v4 requires a new battle",
+      "Rules v5 requires a new battle",
     ) && (await page.locator("#lobby").isVisible()),
     "old autosave explains breaking rules version",
   );
