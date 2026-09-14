@@ -1,6 +1,6 @@
 game:
   name: Age of Chess – Warfare
-  version: 3
+  version: 4
   attack_all_directions: true
   lone_commander_loses: true
   commander_retreat_limit: 3
@@ -8,6 +8,8 @@ game:
   same_type_stance: guarded_center
   frontal_enemy_sidesteps: true
   cavalry_pass_single_ally: true
+  formation_rearrangements: 3
+  formation_combat: ready_reserve
   board:
     rows: 8
     cols: 8
@@ -84,10 +86,7 @@ game:
       R: {P: win, N: lose, B: win, R: stance, Q: win, K: win}
       Q: {P: illegal, N: illegal, B: illegal, R: illegal, Q: mutual, K: win}
       K: {P: win, N: win, B: win, R: win, Q: win, K: win}
-    stacks:
-      - {attacker: N, top: B, bottom: B, outcome: [true, false, false]}
-      - {attacker: N, top: R, bottom: '*', outcome: [false, true, true]}
-      - {attacker: R, top: P, bottom: P, outcome: [false, false, true]}
+    stacks: []
 rewards:
   win: 1.0
   loss: -1.0

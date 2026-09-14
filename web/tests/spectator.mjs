@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { initialState, transition, legalActions } from "../src/engine.mjs";
+import { initialState, transition, legalActions, isPreparation } from "../src/engine.mjs";
 import { chooseAction } from "../src/ai.mjs";
 import {
   createRecord,
@@ -93,7 +93,7 @@ export async function spectatorChecks(browser, url, monitor, check, out) {
   await page.goto(url);
   const recordText = () =>
     page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
-  const ply = async () => JSON.parse(await recordText()).moves.length;
+  const ply = async () => JSON.parse(await recordText()).moves.filter(a => !isPreparation(a[5])).length;
   const idle = () =>
     page.waitForFunction(
       () =>
@@ -102,7 +102,7 @@ export async function spectatorChecks(browser, url, monitor, check, out) {
   const waitMoves = (count) =>
     page.waitForFunction(
       ({ key, count }) =>
-        JSON.parse(localStorage.getItem(key)).moves.length >= count,
+        JSON.parse(localStorage.getItem(key)).moves.filter(a => a[5] < 4 || a[5] === 8).length >= count,
       { key: SAVE_KEY, count },
     );
   const pause = async () => {
@@ -354,11 +354,11 @@ export async function spectatorChecks(browser, url, monitor, check, out) {
       );
       await p.waitForTimeout(500);
       const count = await p.evaluate(
-        (key) => JSON.parse(localStorage.getItem(key)).moves.length,
+        (key) => JSON.parse(localStorage.getItem(key)).moves.filter(a => a[5] < 4 || a[5] === 8).length,
         SAVE_KEY,
       );
       check(
-        count === record.moves.length + 1,
+        count === record.moves.filter(a => !isPreparation(a[5])).length + 1,
         `${name}: pause during a cinematic commits its order exactly once`,
       );
       if (name === "ending") {

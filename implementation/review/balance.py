@@ -1,4 +1,4 @@
-"""Seeded paired-color games on rules v3; unresolved games are never draws.
+"""Seeded paired-color games on rules v4; unresolved games are never draws.
 
 Run from repo root: python -m implementation.review.balance --workers 4
 Process workers are independent simulation jobs, not learning agents.
@@ -19,7 +19,7 @@ import numpy as np
 from implementation.age_of_chess.rules_loader import load_ruleset
 from implementation.age_of_chess.env import Engine
 from implementation.age_of_chess.agents import RandomAgent, GreedyAgent, LookaheadAgent
-from implementation.age_of_chess.utils import encode_action, decode_action
+from implementation.age_of_chess.utils import encode_action, decode_action, is_preparation
 
 CLASSES = {"Random":RandomAgent,"Greedy":GreedyAgent,"Lookahead":LookaheadAgent}
 _RULES = None
@@ -37,17 +37,25 @@ def play(task):
     actions=Counter();losses=Counter();conversions=Counter();stacking=0;minimal=0
     prior_count=32
     trace=[]
-    for ply in range(cap):
-        if engine.state.done: break
+    while not engine.state.done and engine.state.move_count < cap:
         actor=engine.state.to_move
         action=(north if actor=="north" else south).select(engine)
         if action is None: raise AssertionError("Unadjudicated no-action state")
         assert decode_action(encode_action(*action)) == action
-        minimal += len(engine.legal_actions()) < len(engine.legal_actions_unfiltered())
+        minimal += not is_preparation(action[-1]) and len(engine.legal_orders()) < len(engine.legal_actions_unfiltered())
         if action[-1]==0:
             target=engine.state.board.grid[action[3]][action[4]]
             stacking += target.top is not None
+        before_ply=engine.state.move_count
+        before_retreats=engine.state.retreat_counts.copy()
+        before_history=engine.state.position_counts.copy() if is_preparation(action[-1]) else None
         event=engine.apply(action)
+        if is_preparation(action[-1]):
+            assert engine.state.to_move==actor and engine.state.move_count==before_ply
+            assert engine.state.retreat_counts==before_retreats and engine.state.position_counts==before_history
+            assert 1<=len(engine.state.prepared)<=3 and len(set(engine.state.prepared))==len(engine.state.prepared)
+        else:
+            assert engine.state.to_move!=actor and engine.state.move_count==before_ply+1 and not engine.state.prepared
         actions[f"{event['actor']}:{event['atype']}"]+=1
         for death in event["losses"]: losses[death["code"]]+=1
         if "convert" in event: conversions[event["convert"]["converted"]]+=1
@@ -109,7 +117,7 @@ def main():
     p.add_argument("--search-pairs",type=int,default=250)
     p.add_argument("--max-plies",type=int,default=512)
     p.add_argument("--workers",type=int,default=4)
-    p.add_argument("--out",default="implementation/review/results_v3")
+    p.add_argument("--out",default="implementation/review/results_v4")
     args=p.parse_args()
     if min(args.pairs,args.search_pairs)<0 or args.max_plies<1: p.error("invalid sample size or cap")
     out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
@@ -134,7 +142,7 @@ def main():
     with (out/"games.csv").open("w",newline="") as f:
         w=csv.DictWriter(f,fieldnames=list(records[0]) if records else [])
         w.writeheader();w.writerows(records)
-    summary={"rules_version":3,"base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+    summary={"rules_version":4,"base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
              "source_sha256":source_hash(args.ruleset),"rules_sha256":hashlib.sha256(Path(args.ruleset).read_bytes()).hexdigest(),
              "games":len(records),"plies":sum(r["plies"] for r in records),"max_plies":args.max_plies,
              "invariant_failures":0,"action_codec_failures":0,
@@ -147,6 +155,7 @@ def main():
                             "Lookahead searches two plies: eight root candidates and every opponent reply's immediate material swing.",
                             "Bootstrap resamples complete color-swapped seed pairs; incomplete-pair selection can bias estimates.",
                             "Unresolved bounds assign capped games score 0 or 1; truncation is not a draw.",
+                            "Greedy and Lookahead prepare defensively after selecting a normal order; neither searches full compound turns.",
                             "Piece event counts measure policy usage, not causal piece value or expert balance."]}
     (out/"summary.json").write_text(json.dumps(summary,indent=2)+"\n")
     (out/"sample_replays.json").write_text(json.dumps(traces,indent=2)+"\n")

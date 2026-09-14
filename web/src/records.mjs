@@ -6,7 +6,7 @@ export function createRecord(moves, config, resignation = null) {
   return {
     format: "age-of-chess",
     version: 1,
-    rules: 3,
+    rules: 4,
     savedAt: new Date().toISOString(),
     config,
     moves,
@@ -16,14 +16,14 @@ export function createRecord(moves, config, resignation = null) {
 export function readRecord(text) {
   if (text.length > 2_000_000) throw Error("This save file is too large.");
   const record = JSON.parse(text);
-  if (record?.format === "age-of-chess" && record.rules !== 3)
+  if (record?.format === "age-of-chess" && record.rules !== 4)
     throw Error(
-      "This battle uses an older ruleset. Rules v3 requires a new battle; the old save cannot be replayed safely.",
+      "This battle uses an older ruleset. Rules v4 requires a new battle; the old save cannot be replayed safely.",
     );
   if (
     record.format !== "age-of-chess" ||
     record.version !== 1 ||
-    record.rules !== 3 ||
+    record.rules !== 4 ||
     !Array.isArray(record.moves) ||
     record.moves.length > 20000
   )

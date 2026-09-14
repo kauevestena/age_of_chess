@@ -1,6 +1,6 @@
 import { studyState } from "./engine.mjs";
 
-function position(units, enemyKing = 0) {
+function position(units, enemyKing = 0, layouts = {}) {
   const board = Array.from({ length: 64 }, () => []);
   board[63] = [6];
   board[enemyKing] = [-6];
@@ -8,7 +8,9 @@ function position(units, enemyKing = 0) {
   // Each lesson retains supporting units, so it cannot end before its intended order.
   board[62] = [1];
   board[1] = [-1];
-  return studyState(board);
+  const state = studyState(board);
+  for (const [cell, layout] of Object.entries(layouts)) state.layout[Number(cell)] = layout;
+  return studyState(board, 1, [0, 0], state.layout);
 }
 export const LESSONS = [
   {
@@ -45,7 +47,7 @@ export const LESSONS = [
   },
   {
     title: "Form a company",
-    text: "Move the Archer on d3 onto the friendly Archer on e4. Choose “Join formation”. Two friendly units can share a square; the arriving unit goes underneath.",
+    text: "Move the Archer on d3 onto the friendly Archer on e4. Choose “Join formation”. Two friendly units can share a square; the arriving unit becomes B, behind resident A in an N–S formation.",
     state: () =>
       position([
         [43, [3]],
@@ -53,11 +55,11 @@ export const LESSONS = [
       ]),
     action: [5, 3, 0, 4, 4, 0],
     success:
-      "Either stack slot can act. Select Top or Bottom in the unit panel. The top unit receives enemy attacks first.",
+      "Either member can act. Select A or B in the unit panel. Arrange up to three existing formations before your next normal order; approach direction determines who is exposed.",
   },
   {
     title: "A powerful volley",
-    text: "Two Archers occupy e4. Select Bottom in the unit panel, then shoot the Heavy Infantry on e6. A double Archer formation can pierce heavy armor.",
+    text: "Two Archers occupy e4. Select B in the unit panel, then shoot the Heavy Infantry on e6. A double Archer formation can pierce heavy armor.",
     state: () =>
       position([
         [36, [3, 3]],
@@ -65,7 +67,7 @@ export const LESSONS = [
       ]),
     action: [4, 4, 1, 2, 4, 2],
     success:
-      "Power shots can kill Cavalry and Heavy Infantry, but never a Commander. A shot removes only the top defender.",
+      "Power shots can kill Cavalry and Heavy Infantry, but never a Commander. A shot removes one exposed defender; you may choose when both are exposed.",
   },
   {
     title: "Win an allegiance",
@@ -89,7 +91,7 @@ export const LESSONS = [
       ]),
     action: [4, 4, 0, 3, 4, 1],
     success:
-      "The defender held its stance. For matching ordinary classes, front diagonals eliminate both top combatants; a side or rear attack wins. Companions survive.",
+      "The defender held its stance. For matching ordinary classes, a guarded front holds. An E–W formation also braces its front diagonals. Class counters still take priority.",
   },
   {
     title: "Step out of the spear line",
@@ -115,11 +117,11 @@ export const LESSONS = [
       ]),
     action: [4, 4, 0, 4, 3, 1],
     success:
-      "The top Pikeman fell. Its Archer companion holds d4, so your surviving attacker stays on e4. A formation's matching top uses the same stance as a solo defender.",
+      "Both exposed defenders fell: the flank defeats a matching Pikeman, and Pikemen always beat Archers in melee. Your Pikeman takes d4.",
   },
   {
     title: "Ride through the ranks",
-    text: "Select the bottom Cavalry on g2, then ride to e4 through the single ally on f3. One knight can pass through one ally on its first step and continue in the same order.",
+    text: "Select Cavalry B on g2, then ride to e4 through the single ally on f3. One knight can pass through one ally on its first step and continue in the same order.",
     state: () =>
       position([
         [54, [1, 2]],
@@ -131,7 +133,7 @@ export const LESSONS = [
   },
   {
     title: "An answering arrow",
-    text: "Select your bottom Archer on e4 and shoot the Archer on e6. The defending Archer returns fire from any direction: both Archers will fall.",
+    text: "Select Archer B on e4 and shoot the Archer on e6. The defending Archer returns fire from any direction: both Archers will fall.",
     state: () =>
       position([
         [36, [1, 3]],
@@ -140,6 +142,20 @@ export const LESSONS = [
     action: [4, 4, 1, 2, 4, 2],
     success:
       "Both actual Archers died; both Pikeman companions survived. Ranged return fire ignores melee stance. Keep supporting units alive: a lone Commander loses, and its third consecutive retreat forfeits.",
+  },
+  {
+    title: "Arrange the company",
+    text: "Select the mixed formation on e4. In Formation arrangement, choose A W · B E to turn the column into a line. This is a preparation, not a normal order.",
+    state: () => position([[36, [1, 4]]]),
+    action: [4, 4, 0, 4, 4, 6],
+    success: "A now holds the west subcell and B the east. In a battle you must still issue one normal order. You may rearrange up to three distinct formations; no layout reverses a unit counter.",
+  },
+  {
+    title: "Counters outrank surprise",
+    text: "Your Cavalry on e5 approaches a Pikeman on e4 from behind. Preview and confirm this training sacrifice: a rear attack never overturns the Pikeman’s counter.",
+    state: () => position([[28, [2]], [36, [-1]]]),
+    action: [3, 4, 0, 4, 4, 1],
+    success: "The Pikeman survives and the Cavalry falls. Class counters always come before facing or formation benefits.",
   },
   {
     title: "Claim the crown",

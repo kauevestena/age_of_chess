@@ -3,8 +3,18 @@ import operator
 import numpy as np
 
 # (from_row, from_col, slot, to_row, to_col, kind)
-DIMS = (8, 8, 2, 8, 8, 4)
-ACTION_SPACE_SIZE = 32768
+# 0 move, 1 melee, 2 shoot A, 3 convert, 4..7 arrange, 8 shoot B.
+DIMS = (8, 8, 2, 8, 8, 9)
+ACTION_SPACE_SIZE = 73728
+
+def is_preparation(kind):
+    return 4 <= kind <= 7
+
+def is_shot(kind):
+    return kind in (2, 8)
+
+def shot_slot(kind):
+    return 1 if kind == 8 else 0
 
 def in_bounds(r, c, rows=8, cols=8):
     return 0 <= r < rows and 0 <= c < cols

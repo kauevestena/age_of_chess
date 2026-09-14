@@ -3,12 +3,12 @@
 A simulator-first tactical chess variant with stacking, ranged attacks, conversion,
 class counters and capture-the-Commander victory. See [the complete rules](rulesets/RULES.md).
 
-**Rules v3:** guarded same-class stance, frontal sideways evasion, Cavalry passage
-through single allies, attacks in every direction, Archer return fire, lone-Commander
-defeat and a three-retreat Commander forfeit. Pikemen still beat Archers in melee.
-Partial stack attacks leave a surviving attacker at its origin. Commander conversion
-is forbidden. The third occurrence of a position is a draw. The rules schema and
-combat table are validated; unsupported settings fail instead of being ignored.
+**Rules v4:** formations arrange A/B across N–S or E–W. Rearrange up to three
+formations before one mandatory normal order. Physical contact determines whether
+both defenders engage or a ready reserve follows; class counters always take
+priority, including Pikeman over Cavalry from the rear. Arrows target exposed
+members. All v3 movement, guarded stance, return-fire, lone-Commander and retreat
+rules remain. See [the v4 implementation review](web/review/FORMATIONS_V4.md).
 
 ## Browser game
 
@@ -39,7 +39,8 @@ python implementation/examples/gui_viewer.py
 
 GUI: click a source and destination; **TAB** selects the other stack slot,
 **L** toggles legal overlays, **G** plays Greedy, **SPACE** plays a random legal move.
-**A** selects automatic action choice, **M** move/melee, **R** ranged, **C** conversion.
+**A** selects automatic action choice, **M** move/melee, **R** ranged, **C** conversion. **1–4** rearranges the selected formation into A N/B S,
+A S/B N, A W/B E or A E/B W; **T** selects the other exposed ranged target.
 
 ## Direct engine and PettingZoo
 
@@ -63,17 +64,22 @@ for agent in env.agent_iter():
 ```
 
 The canonical tuple is `(from_row, from_col, slot, to_row, to_col, kind)` everywhere.
-`kind` is move/stack=0, melee=1, ranged=2, conversion=3. Use `encode_action(*action)`
+`kind` is move/join=0, melee=1, shoot A=2, conversion=3, arrangements=4–7
+(in the order above), or shoot B=8. Preparation actions use the same source and
+target cell and `slot=0`; the selected acting member still determines the shooter.
+There are 73,728 encoded action IDs. Use `encode_action(*action)`
 for the discrete interface. Illegal direct-engine actions raise before mutation;
 illegal training-interface actions forfeit, without silently executing another move.
 
-The observation has shape `(29, 8, 8)` and dtype `float32`: own top/bottom class
-planes (12), opponent top/bottom planes (12), own North-direction flag, side-to-move
-flag, normalized current-position occurrence count, and normalized own/opponent
-Commander retreat counters. Coordinates are **absolute**,
-matching action IDs. Full repetition history is available in `info['position_counts']`;
-the observation alone does not encode every past position. Inactive/finished agent
-masks contain only zeros. Rewards are per-step, terminal-only, and zero-sum.
+The observation has shape `(35, 8, 8)` and dtype `float32`. Planes 0–23 encode
+own/opponent A/B classes; 24–28 hold direction, side to move, repetition and both
+Commander retreat counters. Planes 29–32 identify the four physical arrangements,
+33 marks formations already prepared this turn, and 34 holds the remaining budget
+normalized by three. Coordinates are **absolute**, matching action IDs.
+Full repetition history is available in `info['position_counts']`; the observation
+alone does not encode every past position. Inactive/finished masks contain zeros.
+Rewards are per-step, terminal-only and zero-sum. A preparation returns zero reward
+and keeps the same actor; only a normal order advances the turn or ply cap.
 
 Use `engine.state.winner`, `reason`, `terminated` and `truncated` to adjudicate.
 A ply cap is unresolved truncation, not a draw or a reward-based winner. Terminal
@@ -81,13 +87,13 @@ rewards do not pay capture/conversion bonuses that can be farmed in a loop.
 
 The old `age_of_chess_v0` name remains an import alias only. Old YAML files and
 checkpoints need migration/retraining: the action layout and observation changed.
-Do not compare old reward-adjudicated league records with v3 results.
+Do not compare old reward-adjudicated league records with v4 results.
 
 ## Training and evaluation
 
 `AOCSingleAgentSelfPlayEnv` keeps one learning side per episode, against a random
-or Greedy opponent, or a supplied frozen-opponent callable. A step includes the
-opponent's reply. Training one policy on alternating actors within a single-agent
+or Greedy opponent, or a supplied frozen-opponent callable. A normal-order step includes all of the opponent's preparations and its reply.
+A learner preparation retains control without calling the opponent. Training one policy on alternating actors within a single-agent
 step is no longer used. Default learning colors are seeded-random per episode.
 
 ```bash
@@ -100,7 +106,7 @@ python -m implementation.league.report
 ```
 
 MaskablePPO is preferred; the unmasked A2C baseline may repeatedly forfeit by
-sampling illegal actions. The league loads both flat and tensor v3 checkpoints.
+sampling illegal actions. The league loads both flat and tensor v4 checkpoints.
 It records draws and truncations distinctly and excludes unresolved/legacy records
 from ratings. Greedy uses seeded random tie breaks, not coordinate-order ties.
 
@@ -117,7 +123,7 @@ python -m implementation.review.balance --pairs 1500 --search-pairs 250 --worker
 ```
 
 The tests include the corrected melee counters, stack conservation, movement and
-ability edge cases, all 32,768 action IDs, draw detection, atomic illegal actions,
+ability edge cases, all 73,728 action IDs, draw detection, atomic illegal actions,
 PettingZoo/Gym API checks, league adjudication, and a short MaskablePPO train/save/load
 cycle when SB3 is installed. The rulesheet combat table is checked against YAML.
 

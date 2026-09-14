@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { spectatorChecks } from "./spectator.mjs";
+import { formationChecks } from "./formations-browser.mjs";
 import { createRecord, SAVE_KEY } from "../src/records.mjs";
 const require = createRequire(import.meta.url),
   { chromium } = require("playwright");
@@ -43,6 +44,7 @@ function check(value, message) {
 }
 function monitor(page) {
   page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("response", (r) => {
     if (r.status() >= 400) badRequests.push(`${r.status()} ${r.url()}`);
   });
@@ -128,12 +130,12 @@ try {
   await download.saveAs(resolve(out, "roundtrip.json"));
   await page.locator("#review-button").click();
   check(
-    (await page.locator("#replay-position").textContent()) === "0 / 1",
+    (await page.locator("#replay-position").textContent()) === "0 orders · step 0 / 1",
     "review initial position",
   );
   await page.locator("#replay-next").click();
   check(
-    (await page.locator("#replay-position").textContent()) === "1 / 1",
+    (await page.locator("#replay-position").textContent()) === "1 orders · step 1 / 1",
     "review next position",
   );
   await page.locator("#replay-exit").click();
@@ -208,7 +210,7 @@ try {
   await waitIdle(page);
   check(
     (await cell(page, 36).getAttribute("aria-label")).includes(
-      "bottom Azure Host Archer",
+      "Azure Host Archer",
     ),
     "power shot preserves both slots",
   );
@@ -268,7 +270,7 @@ try {
   await waitIdle(page);
   check(
     (await cell(page, 45).getAttribute("aria-label")).includes(
-      "bottom Azure Host Pikeman",
+      "Azure Host Pikeman",
     ),
     "sidestep joins underneath ally",
   );
@@ -283,9 +285,10 @@ try {
   await page.locator("#skip-battle").click();
   await waitIdle(page);
   check(
-    (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman") &&
-      (await cell(page, 35).getAttribute("aria-label")).includes("Archer"),
-    "flank preserves attacker origin and enemy companion",
+    (await cell(page, 36).getAttribute("aria-label")).includes("empty") &&
+      (await cell(page, 35).getAttribute("aria-label")).includes("Pikeman") &&
+      !(await cell(page, 35).getAttribute("aria-label")).includes("Archer"),
+    "flank exposes both defenders and the surviving attacker advances",
   );
   await page.locator("#next-lesson").click();
   await page.locator('[data-select-slot="1"]').click();
@@ -311,6 +314,19 @@ try {
       !(await cell(page, 20).getAttribute("aria-label")).includes("Archer"),
     "return fire removes both selected Archers",
   );
+  await page.locator("#next-lesson").click();
+  await page.locator('[data-layout="2"]').click();
+  await waitIdle(page);
+  check((await cell(page, 36).locator('[data-slot="0"]').getAttribute("data-position")) === "W", "A occupies west subcell");
+  check((await page.locator("#formation-budget").textContent()).includes("1/3"), "preparation keeps normal order pending");
+  await page.screenshot({ path: resolve(out, "formation-controls.png"), fullPage: true });
+  await page.locator("#next-lesson").click();
+  await cell(page, 36).click();
+  await page.getByRole("button", { name: /Melee attack/ }).click();
+  await page.locator("#battle-dialog").waitFor({ state: "visible" });
+  await page.locator("#skip-battle").click();
+  await waitIdle(page);
+  check((await cell(page, 28).getAttribute("aria-label")).includes("empty") && (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman"), "rear attack cannot reverse Cavalry counter");
   await page.locator("#next-lesson").click();
   await cell(page, 28).click();
   await page.getByRole("button", { name: /Melee attack/ }).click();
@@ -388,7 +404,7 @@ try {
   await page.locator("#continue").click();
   check(
     (await page.locator("#toast").textContent()).includes(
-      "Rules v3 requires a new battle",
+      "Rules v4 requires a new battle",
     ) && (await page.locator("#lobby").isVisible()),
     "old autosave explains breaking rules version",
   );
@@ -573,6 +589,7 @@ try {
     "worker fallback plays a legal reply",
   );
   await limited.close();
+  await formationChecks(browser, url, monitor, check, out);
   await spectatorChecks(browser, url, monitor, check, out);
   check(errors.length === 0, `browser errors: ${errors.join("; ")}`);
   check(badRequests.length === 0, `failed assets: ${badRequests.join("; ")}`);

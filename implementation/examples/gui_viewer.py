@@ -6,6 +6,8 @@ from implementation.age_of_chess.env import Engine
 from implementation.age_of_chess.agents import GreedyAgent
 from implementation.age_of_chess.utils import encode_action
 
+from implementation.age_of_chess.combat import POSITIONS
+
 TILE = 72
 W, H = 8*TILE, 8*TILE
 FONT_SIZE = 22
@@ -38,15 +40,15 @@ def draw_board(screen, env, show_legal=False):
             color = COLORS["light"] if (r+c)%2==0 else COLORS["dark"]
             pygame.draw.rect(screen, color, (c*TILE, r*TILE, TILE, TILE))
             sq = engine.state.board.grid[r][c]
-            # draw bottom then top
-            y = r*TILE + TILE//2 + 10
-            x = c*TILE + TILE//2
-            for idx, u in enumerate(filter(None, [sq.bottom, sq.top])):
+            for slot, u in enumerate((sq.top, sq.bottom)):
                 if u:
-                    col = COLORS["north"] if u.side=="north" else COLORS["south"]
-                    pygame.draw.circle(screen, col, (x, y-20*idx), 20)
+                    position = POSITIONS[sq.layout][slot] if sq.bottom else "center"
+                    dx,dy = {"N":(0,-16), "S":(0,16), "W":(-16,0), "E":(16,0), "center":(0,0)}[position]
+                    x,y = c*TILE+TILE//2+dx, r*TILE+TILE//2+dy
+                    col = COLORS[u.side]
+                    pygame.draw.circle(screen, col, (x,y), 16)
                     txt = font.render(SYMBOL[u.code], True, COLORS["text"])
-                    screen.blit(txt, (x-7, y-20*idx-12))
+                    screen.blit(txt, (x-7,y-12))
 
 
     if show_legal:
@@ -62,7 +64,7 @@ def draw_board(screen, env, show_legal=False):
                 pygame.draw.circle(screen, col, (cx, cy), 8)
             elif atype == 1:
                 pygame.draw.rect(screen, col, (tc*TILE+TILE//2-8, tr*TILE+TILE//2-8, 16, 16))
-            elif atype == 2:
+            elif atype in (2,8):
                 pygame.draw.circle(screen, col, (cx, cy), 10, 2)
             elif atype == 3:
                 pygame.draw.circle(screen, col, (cx, cy), 12, 2)
@@ -74,7 +76,7 @@ def draw_board(screen, env, show_legal=False):
                 pygame.draw.circle(screen, COLORS["move"], (cx, cy), 8)
             elif atype == 1:
                 pygame.draw.rect(screen, COLORS["melee"], (tc*TILE+TILE//2-8, tr*TILE+TILE//2-8, 16, 16))
-            elif atype == 2:
+            elif atype in (2,8):
                 pygame.draw.circle(screen, COLORS["ranged"], (cx, cy), 8, 2)
             elif atype == 3:
                 pygame.draw.circle(screen, COLORS["convert"], (cx, cy), 12, 2)
@@ -100,7 +102,8 @@ def main():
     greedy = GreedyAgent()
     show_legal = True
     selected = None  # (r,c)
-    selected_slot = 0  # 0=top,1=bottom
+    selected_slot = 0  # A=0, B=1
+    target_slot = 0
     action_mode = None  # A=auto, M=move/melee, R=ranged, C=conversion
 
     running = True
@@ -113,6 +116,12 @@ def main():
                 if event.key == pygame.K_m: action_mode = "melee"
                 if event.key == pygame.K_r: action_mode = "ranged"
                 if event.key == pygame.K_c: action_mode = "convert"
+                if event.key == pygame.K_t: target_slot = 1-target_slot
+                if event.key in (pygame.K_1,pygame.K_2,pygame.K_3,pygame.K_4) and selected is not None:
+                    fr,fc=selected
+                    layout=(pygame.K_1,pygame.K_2,pygame.K_3,pygame.K_4).index(event.key)
+                    action=(fr,fc,0,fr,fc,4+layout)
+                    if action in env.unwrapped.engine.legal_actions(): env.step(encode_action(*action))
                 if event.key == pygame.K_SPACE:
                     agent = env.agent_selection
                     if env.terminations.get(agent) or env.truncations.get(agent):
@@ -152,11 +161,11 @@ def main():
                     # attempt to find a legal action matching selection -> (r,c) to (r2,c2)
                     fr, fc = selected
                     candidates = [a for a in legal if a[0]==fr and a[1]==fc and a[2]==selected_slot and a[3]==r and a[4]==c]
-                    allowed_types = {None: (0, 1, 2, 3), "melee": (0, 1), "ranged": (2,), "convert": (3,)}
+                    allowed_types = {None: (0, 1, 2, 3, 8), "melee": (0, 1), "ranged": (2,8), "convert": (3,)}
                     candidates = [a for a in candidates if a[5] in allowed_types[action_mode]]
                     if candidates:
                         # Auto prefers abilities; M/R/C lets the player choose explicitly.
-                        best = sorted(candidates, key=lambda a: {2:0,3:1,1:2,0:3}[a[5]])[0]
+                        best = sorted(candidates, key=lambda a: {2:0 if target_slot==0 else 1,8:0 if target_slot==1 else 1,3:2,1:3,0:4}[a[5]])[0]
                         idx = encode_action(*best)
                         agent = env.agent_selection
                         if not (env.terminations.get(agent) or env.truncations.get(agent)):
@@ -165,7 +174,7 @@ def main():
 
         state = env.unwrapped.engine.state
         status = f"{state.winner or 'unresolved'}: {state.reason}" if state.done else f"{state.to_move} to move"
-        pygame.display.set_caption(f"Age of Chess | {status} | mode: {action_mode or 'auto'} (A/M/R/C)")
+        pygame.display.set_caption(f"Age of Chess | {status} | mode: {action_mode or 'auto'} (A/M/R/C) | layout 1–4, target {'B' if target_slot else 'A'} (T) | prepared {len(state.prepared)}/3")
         # draw
         draw_board(screen, env, show_legal=show_legal)
         draw_labels(screen)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from .utils import in_bounds
+from .combat import melee_allowed, contact_slots, canonical_layout
 
 Action = tuple[int, int, int, int, int, int]
 ALL_DIRS = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if dr or dc]
@@ -53,7 +54,7 @@ def gen_single_moves(state, rules):
                     if target.is_empty() or (target.top.side == side and target.bottom is None):
                         if not attack_only: actions.add((r, c, slot, rr, cc, 0))
                     elif target.top.side != side:
-                        if rules.game.combat.single[unit.code][target.top.code] != "illegal":
+                        if melee_allowed(unit, target, rules, (r, c), (rr, cc)):
                             actions.add((r, c, slot, rr, cc, 1))
 
                 for dr, dc in dirs:
@@ -111,7 +112,19 @@ def gen_single_moves(state, rules):
                                 if not in_bounds(rr, cc, rows, cols): break
                                 target = state.board.grid[rr][cc]
                                 if target.top:
-                                    if target.top.side != side and target.top.code in ability.targets:
-                                        actions.add((r, c, slot, rr, cc, 2))
+                                    if target.top.side != side:
+                                        for target_slot in contact_slots((r, c), (rr, cc), target.bottom, target.layout):
+                                            if (target.top, target.bottom)[target_slot].code in ability.targets:
+                                                actions.add((r, c, slot, rr, cc, 8 if target_slot else 2))
                                     break  # Any occupied square blocks further fire.
     return sorted(actions)
+
+
+def gen_preparations(state, rules):
+    if state.done or len(state.prepared) >= rules.game.formation_rearrangements:
+        return []
+    return [(r, c, 0, r, c, 4+layout)
+            for r, row in enumerate(state.board.grid) for c, sq in enumerate(row)
+            if sq.bottom and sq.top.side == state.to_move and r*8+c not in state.prepared
+            for layout in range(4)
+            if layout != sq.layout and layout == canonical_layout(sq.top, sq.bottom, layout)]

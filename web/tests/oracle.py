@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from implementation.age_of_chess.env import Engine
+from implementation.age_of_chess.combat import canonical_layout
 from implementation.age_of_chess.game_state import Board, Unit, GameState
 
 rng = random.Random(20260914)
@@ -13,6 +14,7 @@ def snapshot(engine):
     return {'board': [[(1 if u.side == 'north' else -1) * ('PNBRQK'.index(u.code)+1)
                       for u in (sq.top, sq.bottom) if u]
                      for row in s.board.grid for sq in row],
+            'layout': [sq.layout for row in s.board.grid for sq in row], 'prepared': s.prepared[:],
             'turn': 1 if s.to_move == 'north' else -1, 'ply': s.move_count,
             'retreats': [s.retreat_counts['north'], s.retreat_counts['south']],
             'winner': {'north':1,'south':-1,'draw':0,None:None}[s.winner], 'reason':s.reason}
@@ -26,7 +28,8 @@ def emit(engine, actions=None, chosen=None):
     print(json.dumps({'before':before,'legal':actions,'action':action,'after':snapshot(engine),
                       'losses': event['losses'] if event else [],
                       'approach': event.get('approach') if event else None,
-                      'stance': event.get('stance') if event else None},separators=(',',':')))
+                      'stance': event.get('stance') if event else None,
+                      'formation': event.get('formation') if event else None},separators=(',',':')))
 
 for _ in range(100):
     e = Engine('rulesets/default.yaml')
@@ -42,7 +45,9 @@ for _ in range(1200):
         owner='north' if idx==0 else 'south' if idx==1 else rng.choice(['north','south'])
         c='K' if idx<2 else rng.choice('PNBR')
         b.grid[k//8][k%8].add_unit(Unit(c,owner))
-        if rng.random()<.35: b.grid[k//8][k%8].add_unit(Unit(rng.choice('PNBR'),owner))
+        if rng.random()<.35:
+            sq=b.grid[k//8][k%8];sq.add_unit(Unit(rng.choice('PNBR'),owner))
+            sq.layout=canonical_layout(sq.top,sq.bottom,rng.randrange(4))
     free=[i for i in range(64) if i not in squares]
     for owner in ['north','south']:
         if rng.random()<.7:
@@ -50,7 +55,7 @@ for _ in range(1200):
     e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=rng.choice(['north','south'])))
     emit(e)
 
-# Exhaustive melee source/target slots (including all three stack exceptions).
+# Special-class and mixed formation legality, including Commander exposure.
 for actor in 'PNBRQK':
     for defender in 'PNBRQK':
         for bottom in [None,*'PNBR']:
@@ -77,3 +82,22 @@ for defender in ['north','south']:
                     if formation:b.grid[3][3].add_unit(Unit('P',defender))
                     e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=actor_side))
                     emit(e,chosen=(fr,fc,slot,3,3,1))
+
+# Every ordinary attacking class, ordered defending pair, physical arrangement,
+# owner and approach. Explicitly exercise both simultaneous and reserve waves.
+for owner in ('north','south'):
+    actor_side='south' if owner=='north' else 'north'
+    sign=1 if owner=='north' else -1
+    for dr,dc in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
+        for layout in range(4):
+            for actor in 'PNBR':
+                for first in 'PNBR':
+                    for second in 'PNBR':
+                        b=Board(8,8)
+                        b.grid[7][7].add_unit(Unit('K','north'));b.grid[0][0].add_unit(Unit('K','south'))
+                        fr,fc=3+dr*sign,3+dc*sign
+                        b.grid[fr][fc].add_unit(Unit(actor,actor_side))
+                        sq=b.grid[3][3];sq.add_unit(Unit(first,owner));sq.add_unit(Unit(second,owner))
+                        sq.layout=canonical_layout(sq.top,sq.bottom,layout)
+                        e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=actor_side))
+                        emit(e,chosen=(fr,fc,0,3,3,1))

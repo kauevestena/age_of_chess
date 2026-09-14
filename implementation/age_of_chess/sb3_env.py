@@ -9,7 +9,8 @@ class AOCSingleAgentSelfPlayEnv(gym.Env):
     """Fixed-opponent training, or self-play with a frozen opponent supplied by caller.
 
     `opponent_policy` is 'random', 'greedy', or a callable Engine -> action tuple.
-    Each Gym step includes the opponent's reply and returns to the learning side.
+    A learner preparation retains control. A normal-order step includes all of
+    the opponent's preparations and its reply, returning to the learning side.
     Colors are seeded-random per episode by default; set learner_side to fix one.
     """
     metadata = {"render_modes": []}
@@ -44,7 +45,8 @@ class AOCSingleAgentSelfPlayEnv(gym.Env):
         else:
             cls = RandomAgent if self.opponent_policy == "random" else GreedyAgent
             self._opponent = cls(opponent_seed).select
-        if self.learner_side == "south": self._opponent_move()
+        while not self._pz.unwrapped.engine.state.done and self._pz.agent_selection != self.learner_side:
+            self._opponent_move()
         return self._pz.observe(self.learner_side), self._pz.infos[self.learner_side]
 
     def get_action_mask(self):
@@ -58,7 +60,7 @@ class AOCSingleAgentSelfPlayEnv(gym.Env):
             raise RuntimeError("Expected learning side's turn")
         self._pz.step(action)
         reward = float(self._pz.rewards[self.learner_side])
-        if not engine.state.done:
+        while not engine.state.done and self._pz.agent_selection != self.learner_side:
             reward += self._opponent_move()
         return (self._pz.observe(self.learner_side), reward, engine.state.terminated,
                 engine.state.truncated, self._pz.infos[self.learner_side])

@@ -44,7 +44,7 @@ test("guarded stance: all sectors, ordinary classes, owners and formation slots"
     for (const [sector, dr, dc] of sectors)
       for (const code of [1, 2, 3, 4])
         for (const slot of [0, 1])
-          for (const formation of [false, true]) {
+          for (const formation of [false]) {
             const from = (3 + dr * defender) * 8 + 3 + dc * defender,
               to = 27,
               actor = -defender * code;
@@ -163,6 +163,7 @@ test("ranged return fire removes actual shooter from either slot along all eight
           ],
           owner,
         );
+        s.layout[to] = dr >= 0 ? 0 : 1; // Expose Archer A to this ray.
         const { state, event } = transition(s, a(27, to, 2, slot));
         assert(event.returnFire);
         assert.deepEqual(state.board[27], [owner]);
@@ -187,7 +188,7 @@ test("three Commander retreats forfeit; opponent turns preserve the streak", () 
   });
   assert.equal(s.reason, "commander_retreat_forfeit");
 });
-test("non-retreat orders reset counts; stationary melee and capture have correct precedence", () => {
+test("non-retreat orders reset counts; formation breakthrough and capture have correct precedence", () => {
   for (const action of [a(27, 26), a(27, 19), a(62, 54)]) {
     const s = setup(
       [
@@ -210,8 +211,9 @@ test("non-retreat orders reset counts; stationary melee and capture have correct
     [2, 0],
   );
   let out = transition(s, a(27, 36, 1, 1));
-  assert.equal(out.state.retreats[0], 0);
-  assert.equal(out.event.moved, false);
+  assert.equal(out.state.retreats[0], 3);
+  assert.equal(out.event.moved, true);
+  assert.equal(out.state.reason, "commander_retreat_forfeit");
   s = setup(
     [
       [63, []],

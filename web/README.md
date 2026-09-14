@@ -1,6 +1,6 @@
 # Age of Chess — Warfare: browser game
 
-A complete static client for the canonical rules v3. The browser runs all rules,
+A complete static client for the canonical rules v4. The browser runs all rules,
 AI search, animation, audio synthesis and save management. There are no accounts,
 API keys, analytics, server requests for moves, or external runtime dependencies.
 All fonts, art and music ship with the game. No service worker is installed:
@@ -26,11 +26,11 @@ files; neither npm dependencies nor the research implementation are deployed.
 - **Watch a battle:** AI-versus-AI spectator mode, with an independent AI level
   for each army, Pause/Resume, Next order and three playback paces. The existing
   soundtrack and cinematic battles accompany the match.
-- Twelve interactive lessons, all six unit descriptions and a full combat table.
+- Fourteen interactive lessons, all six unit descriptions and a full combat table.
 - Original illustrated unit figures, landscape, heraldry, stone board, medieval
   typography, and a responsive layout with touch and keyboard controls.
 - Deterministic attack previews, explicit ranged/melee selection, accessible
-  stack-slot buttons and legal-destination markers.
+  A/B member and physical-arrangement buttons and legal-destination markers.
 - Cinematic melee exchanges, cavalry charges, arrow volleys, conversions,
   formation survivors, impact particles and unit deaths. Escape skips safely;
   Quick and reduced-motion modes shorten or remove motion.
@@ -39,7 +39,7 @@ files; neither npm dependencies nor the research implementation are deployed.
   percussion and bells, plus battle effects. Music/effects have separate volumes.
   Audio starts with a user gesture, mutes from the header and pauses in hidden tabs.
 - Automatic local saves, portable JSON export/import, full-turn solo undo,
-  per-move local undo, resignation, terminal results and step-through battle review.
+  full-turn local undo, resignation, terminal results and step-through battle review.
 - Worker-based, time-bounded AI search with cancellation and a local fallback.
   Marshal is a deeper heuristic search, not a trained or expert-strength model.
 
@@ -63,8 +63,9 @@ the normal victory or draw conditions. All decisions still run locally.
   spectator games and returning from review stay paused until **Resume**.
   Switching to a hidden tab also pauses the battle.
 
-Existing solo and local save files remain compatible. There is no new game rule,
-turn cap, material adjudication, online service, or automatic rematch.
+A spectator step completes up to three preparations and exactly one normal order.
+There is no turn cap, material adjudication, online service or automatic rematch.
+Rules v4 saves support all three modes; older rules versions require a new battle.
 
 ## GitHub Pages
 
@@ -103,7 +104,8 @@ tuple and all ordered combat outcomes match Python. `rules.mjs` is generated;
 edit `rulesets/default.yaml`, regenerate, and run parity when changing rules.
 The differential test streams reproducible random games, sparse study positions,
 and all ordered melee pairs with stack variants from Python; it compares every
-legal action, board transition, casualty, turn and terminal outcome. The browser
+legal action, arrangement, pending preparation, contact wave, board transition,
+casualty, turn and terminal outcome. The browser
 suite tests the actual `/age_of_chess/` path, mobile and desktop input, tutorial
 combat, saved records, both AI orientations, hints, undo, review, audio output,
 fonts, and missing/external asset requests. Spectator checks cover both AI levels,
@@ -114,7 +116,7 @@ and are attached to GitHub Actions runs as the `browser-review` artifact.
 
 Portable saves store actions and replay them through validated rules, including
 repetition history. Imported HTML or executable content is never evaluated.
-Imports are limited to 2 MB / 20,000 plies. Saves are local to a browser profile;
+Imports are limited to 2 MB / 20,000 action records (including preparations). Saves are local to a browser profile;
 use the Save button to transfer between devices. If browser storage is unavailable,
 the game clearly offers manual download. There is no game-imposed ply cap.
 
@@ -136,12 +138,26 @@ The score notes and instrumentation are in `src/audio.mjs`; unit art is in
 `src/art.mjs`. These are intentionally editable, text-based source assets.
 Audio activation follows [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices).
 
-## Rules v3 compatibility
+## Rules v4 formations and compatibility
 
-The field guide, attack previews, board facing arrows and tutorial explain guarded
-same-class stance, frontal sideways evasion and Cavalry passage through one ally.
-Attack direction is unrestricted within each class's reach; quiet movement retains
-its usual restrictions. Archer return fire, lone-Commander defeat and the third
-consecutive Commander retreat are included. Both retreat counters are reconstructed
-by save/load, undo and replay. Old v2 records are explicitly rejected because their
-orders may now have different outcomes. Start a new battle under v3.
+Select an existing formation to see both physical subcells and choose A or B to
+act. Four arrangement buttons let you swap members or change axis, once per
+formation and up to three formations before your normal order. The budget stays
+visible. Flipping the board rotates the drawing, not the underlying layout or
+army facing. Undo first cancels pending preparations, otherwise a complete turn.
+Partial-turn saves restore the remaining budget; review includes each preparation.
+
+Combat first applies class counters. E–W braces the entire front arc and exposes
+both units to a direct rear attack; N–S exposes both at the side flanks. Other
+approaches meet the nearest member followed by a ready reserve if the attacker
+survives. There is no fatigue or old stack-counter exception. Cinematics follow
+the actual contact sequence, including reserve and simultaneous casualties.
+Arrows may select either exposed member, and ineligible screens block deeper shots.
+
+AI searches normal orders, then applies a bounded defensive planner to persistent
+formations. It does not exhaustively search every combination of three preparations
+and future orders; this is a heuristic opponent, not a balance proof.
+
+Old v3 and earlier records are explicitly rejected because the same orders now
+have different outcomes. Start a new battle under v4. The static build and all
+original artwork, typography and locally synthesized music remain self-contained.
