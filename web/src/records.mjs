@@ -27,11 +27,17 @@ export function readRecord(text) {
   const c = record.config;
   if (
     !c ||
-    !["solo", "local"].includes(c.mode) ||
+    !["solo", "local", "watch"].includes(c.mode) ||
     !["squire", "knight", "marshal"].includes(c.difficulty) ||
     ![1, -1].includes(c.humanSide)
   )
     throw Error("Invalid game settings.");
+  if (
+    c.mode === "watch" &&
+    (!["squire", "knight", "marshal"].includes(c.northDifficulty) ||
+      !["squire", "knight", "marshal"].includes(c.southDifficulty))
+  )
+    throw Error("Invalid spectator commanders.");
   let state = initialState();
   const events = [];
   for (const action of record.moves) {
@@ -42,6 +48,7 @@ export function readRecord(text) {
   if (record.resignation !== null && record.resignation !== undefined) {
     if (
       ![1, -1].includes(record.resignation) ||
+      c.mode === "watch" ||
       state.winner !== null ||
       state.turn !== record.resignation
     )

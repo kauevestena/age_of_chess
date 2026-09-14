@@ -54,6 +54,14 @@ let selected = null,
   inGame = false,
   tutorial = -1,
   lessonDone = false;
+let watchPaused = false;
+const isSpectating = () => config.mode === "watch" && tutorial < 0;
+const aiLevel = (owner) =>
+  isSpectating()
+    ? owner === 1
+      ? config.northDifficulty
+      : config.southDifficulty
+    : config.difficulty;
 let replayPly = null,
   resignation = null,
   activeCell = 52,
@@ -68,6 +76,7 @@ let settings = {
   music: 0.38,
   effects: 0.6,
   sound: true,
+  watchDelay: 1200,
 };
 let savedText = null,
   storageAvailable = true;
@@ -81,6 +90,8 @@ try {
     if (typeof saved[key] === "number" && saved[key] >= 0 && saved[key] <= 1)
       settings[key] = saved[key];
   settings.sound = saved.sound !== false;
+  if ([250, 1200, 2500].includes(saved.watchDelay))
+    settings.watchDelay = saved.watchDelay;
   savedText = localStorage.getItem(SAVE_KEY);
 } catch {
   storageAvailable = false;
@@ -204,6 +215,7 @@ function enterGame() {
 }
 function startGame() {
   cancelAI();
+  watchPaused = false;
   tutorial = -1;
   lessonDone = false;
   resignation = null;
@@ -215,7 +227,11 @@ function startGame() {
     difficulty: $("input[name=difficulty]:checked").value,
     humanSide: Number($("input[name=side]:checked").value),
   };
-  if (config.mode === "local") config.humanSide = 1;
+  if (config.mode !== "solo") config.humanSide = 1;
+  if (isSpectating()) {
+    config.northDifficulty = $("#north-difficulty").value;
+    config.southDifficulty = $("#south-difficulty").value;
+  }
   flipped = config.humanSide === -1;
   activeCell = flipped ? 12 : 52;
   startSound();
@@ -240,6 +256,8 @@ function loadGame({ record, state: loaded, events: history }) {
   tutorial = -1;
   lessonDone = false;
   config = { ...record.config };
+  // Restored spectators explicitly resume, so loading never consumes a turn.
+  watchPaused = isSpectating();
   moves = record.moves.map((a) => [...a]);
   events = history;
   state = loaded;
@@ -266,6 +284,7 @@ function menu() {
   if (!inGame) return;
   if (busy === "animation") return;
   const canResign =
+    !isSpectating() &&
     state.winner === null &&
     tutorial < 0 &&
     replayPly === null &&
@@ -297,8 +316,11 @@ $("#home").onclick = () => {
 $("#menu-button").onclick = menu;
 $("input[name=mode]").closest("fieldset").onchange = () => {
   const solo = $("input[name=mode]:checked").value === "solo";
+  const watch = $("input[name=mode]:checked").value === "watch";
   $("#difficulty-field").hidden = !solo;
   $("#allegiance-field").hidden = !solo;
+  $("#watch-field").hidden = !watch;
+  $("#begin-label").textContent = watch ? "Watch battle" : "Begin battle";
 };
 $("#difficulty-field").onchange = () =>
   ($("#difficulty-description").textContent = {
@@ -326,9 +348,11 @@ function render() {
   $("#battle-mode").textContent =
     tutorial >= 0
       ? "The training ground"
-      : config.mode === "solo"
-        ? `Solo skirmish · ${names[config.difficulty]}`
-        : "Local rivalry · two players";
+      : isSpectating()
+        ? "Spectator battle · AI vs AI"
+        : config.mode === "solo"
+          ? `Solo skirmish · ${names[config.difficulty]}`
+          : "Local rivalry · two players";
   $("#turn-crest").innerHTML = crest(display.turn);
   $("#turn-name").textContent = `The ${HOST(display.turn)}`;
   $("#turn-number").textContent = String(display.ply + 1).padStart(2, "0");
@@ -345,11 +369,15 @@ function render() {
               ? "The order is unfolding…"
               : tutorial >= 0
                 ? "Training exercise"
-                : config.mode === "local"
-                  ? "Your orders, Commander"
-                  : state.turn === config.humanSide
-                    ? "Your turn"
-                    : "Opponent’s turn";
+                : isSpectating()
+                  ? watchPaused
+                    ? "Paused"
+                    : "Awaiting the next order"
+                  : config.mode === "local"
+                    ? "Your orders, Commander"
+                    : state.turn === config.humanSide
+                      ? "Your turn"
+                      : "Opponent’s turn";
   const own = config.humanSide;
   for (const [prefix, owner] of [
     ["player", own],
@@ -359,13 +387,38 @@ function render() {
     $(`#${prefix}-name`).textContent = HOST(owner);
     $(`#${prefix}-roster`).innerHTML = roster(owner, display);
   }
-  $("#opponent-level").textContent =
-    config.mode === "solo" ? names[config.difficulty] : "Local commander";
+  $("#opponent-level").textContent = isSpectating()
+    ? `${names[aiLevel(-own)]} · AI · ${DIRECTION(-own)}`
+    : config.mode === "solo"
+      ? names[config.difficulty]
+      : "Local commander";
   $("#player-role").textContent =
-    `${config.mode === "solo" ? "You" : "Local commander"} · ${DIRECTION(own)}`;
+    `${isSpectating() ? names[aiLevel(own)] + " · AI" : config.mode === "solo" ? "You" : "Local commander"} · ${DIRECTION(own)}`;
+  $("#enemy-army-heading").textContent = isSpectating()
+    ? `${DIRECTION(-own)} army`
+    : "The opposing army";
+  $("#player-army-heading").textContent = isSpectating()
+    ? `${DIRECTION(own)} army`
+    : "Your army";
+  $("#unit-panel-heading").textContent = isSpectating()
+    ? "Unit inspection"
+    : "Unit orders";
+  $("#objective-heading").textContent = isSpectating()
+    ? "The contest"
+    : "Your objective";
+  $("#objective-description").textContent = isSpectating()
+    ? "Two armies. One crown. The first to capture the opposing Commander wins."
+    : "Capture the enemy Commander. Every decision shapes the battle.";
+  $(".keyboard-tip").textContent = isSpectating()
+    ? "Pause to inspect units or review the chronicle · Arrow keys to navigate · F to flip"
+    : "Arrow keys to navigate · Enter to select · Escape to cancel · F to flip · U to undo";
   const disabled = !!busy || replayPly !== null;
-  $("#undo-button").disabled = disabled || !moves.length || tutorial >= 0;
+  $("#undo-button").hidden = isSpectating();
+  $("#undo-button").disabled =
+    disabled || !moves.length || tutorial >= 0 || isSpectating();
+  $("#hint-button").hidden = isSpectating();
   $("#hint-button").disabled =
+    isSpectating() ||
     disabled ||
     state.winner !== null ||
     tutorial >= 0 ||
@@ -397,12 +450,13 @@ function render() {
   renderSelection(display);
   renderLog();
   renderLesson();
+  renderWatchControls();
 }
 
 function renderBoard(display) {
   const focused = document.activeElement?.dataset?.index;
   const available =
-    selected && replayPly === null && !busy
+    selected && canAct()
       ? legal.filter(
           (a) => a[0] * 8 + a[1] === selected.index && a[2] === selected.slot,
         )
@@ -469,9 +523,12 @@ function renderSelection(display) {
   $("#slot-controls").hidden = sq.length < 2;
   if (!unit) {
     $("#selected-art").innerHTML = crest(display.turn);
-    $("#selected-name").textContent = "Awaiting your orders";
-    $("#selected-description").textContent =
-      "Select a unit to see its movement and abilities.";
+    $("#selected-name").textContent = isSpectating()
+      ? "Watch the commanders"
+      : "Awaiting your orders";
+    $("#selected-description").textContent = isSpectating()
+      ? "Pause the battle to inspect a unit or review the chronicle."
+      : "Select a unit to see its movement and abilities.";
     $("#unit-facts").innerHTML = "";
     return;
   }
@@ -479,7 +536,7 @@ function renderSelection(display) {
   $("#selected-name").textContent = label(unit);
   $("#selected-description").textContent = descriptions[code(unit)];
   $("#unit-facts").innerHTML =
-    `<span>${HOST(side(unit))} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "Bottom" : "Top"} unit` : ""}</span><br><span>${side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
+    `<span>${HOST(side(unit))} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "Bottom" : "Top"} unit` : ""}</span><br><span>${isSpectating() ? "Spectator view · the AI controls this unit." : side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
   if (sq.length > 1) {
     $("#slot-controls").innerHTML =
       `<div class="slot-buttons" aria-label="Choose stack slot">${sq.map((u, slot) => `<button data-select-slot="${slot}" class="${selected.slot === slot ? "active" : ""}" aria-pressed="${selected.slot === slot}">${slot ? "Bottom" : "Top"} · ${label(u)}</button>`).join("")}</div>`;
@@ -504,7 +561,7 @@ function canAct() {
     state.winner === null &&
     (tutorial >= 0 ||
       config.mode === "local" ||
-      state.turn === config.humanSide)
+      (config.mode === "solo" && state.turn === config.humanSide))
   );
 }
 function selectCell(index) {
@@ -666,6 +723,7 @@ function requestAI(forHint = false) {
   };
   const finish = (result, fellBack = false) => {
     if (id !== requestId) return;
+    requestId++;
     clearTimeout(aiTimeout);
     worker?.terminate();
     worker = null;
@@ -705,28 +763,96 @@ function requestAI(forHint = false) {
     worker.postMessage({
       id,
       state,
-      difficulty: forHint ? "marshal" : config.difficulty,
+      difficulty: forHint ? "marshal" : aiLevel(state.turn),
     });
   } catch {
     fallback();
   }
 }
-function queueAI() {
+function queueAI(singleOrder = false) {
   if (
     !inGame ||
     busy ||
     tutorial >= 0 ||
     replayPly !== null ||
     state.winner !== null ||
-    config.mode !== "solo" ||
-    state.turn === config.humanSide ||
+    (isSpectating()
+      ? (watchPaused && !singleOrder) || document.hidden
+      : config.mode !== "solo" || state.turn === config.humanSide) ||
     $("#modal").open
   )
     return;
   busy = "ai";
   render();
-  aiTimer = setTimeout(() => requestAI(false), 280);
+  aiTimer = setTimeout(
+    () => requestAI(false),
+    singleOrder ? 0 : isSpectating() ? settings.watchDelay : 280,
+  );
 }
+function renderWatchControls() {
+  const watch = isSpectating();
+  $("#watch-controls").hidden = !watch;
+  $("#pause-battle").hidden = !watch;
+  if (!watch) return;
+  const unavailable = state.winner !== null || replayPly !== null;
+  $("#watch-matchup").textContent =
+    `Azure: ${names[aiLevel(1)]} · Ember: ${names[aiLevel(-1)]}`;
+  $("#watch-toggle").textContent = watchPaused
+    ? "Resume"
+    : busy === "animation"
+      ? "Pause after order"
+      : "Pause";
+  $("#watch-toggle").setAttribute("aria-pressed", String(watchPaused));
+  $("#watch-toggle").disabled = unavailable;
+  $("#watch-step").disabled = unavailable || !watchPaused || !!busy;
+  $("#watch-pace").value = String(settings.watchDelay);
+  $("#watch-pace").disabled = unavailable;
+  $("#pause-battle").textContent = watchPaused
+    ? "Resume after this order"
+    : "Pause after this order";
+  $("#watch-status").textContent =
+    state.winner !== null
+      ? "Battle concluded. Review the chronicle or return to camp."
+      : replayPly !== null
+        ? "Reviewing the chronicle. Playback stays paused."
+        : busy === "animation"
+          ? watchPaused
+            ? "Finishing this order, then pausing."
+            : "An order is unfolding on the field."
+          : busy === "ai"
+            ? `${HOST(state.turn)} is choosing an order…`
+            : watchPaused
+              ? "Paused. Resume the battle or play the next order."
+              : "The commanders are ready.";
+}
+function setWatchPaused(paused) {
+  if (!inGame || !isSpectating() || state.winner !== null || replayPly !== null)
+    return;
+  watchPaused = paused;
+  if (paused && busy !== "animation") cancelAI();
+  // Preserve the board nodes used by the active animation. The order completes once.
+  if (busy === "animation") renderWatchControls();
+  else {
+    render();
+    if (!paused) queueAI();
+  }
+}
+$("#watch-toggle").onclick = () => setWatchPaused(!watchPaused);
+$("#pause-battle").onclick = () => setWatchPaused(!watchPaused);
+$("#watch-step").onclick = () => {
+  if (isSpectating() && watchPaused && !busy) queueAI(true);
+};
+$("#watch-pace").onchange = (e) => {
+  settings.watchDelay = Number(e.target.value);
+  saveSettings();
+  if (busy === "ai" && !worker && !watchPaused) {
+    cancelAI();
+    queueAI();
+  }
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && isSpectating()) setWatchPaused(true);
+});
 $("#hint-button").onclick = () => {
   if (!canAct() || tutorial >= 0) return;
   busy = "hint";
@@ -734,7 +860,14 @@ $("#hint-button").onclick = () => {
   requestAI(true);
 };
 function undo() {
-  if (busy || !moves.length || tutorial >= 0 || replayPly !== null) return;
+  if (
+    busy ||
+    !moves.length ||
+    tutorial >= 0 ||
+    replayPly !== null ||
+    isSpectating()
+  )
+    return;
   cancelAI();
   let length = moves.length - 1;
   if (config.mode === "solo")
@@ -833,6 +966,7 @@ $("#file-input").onchange = async (e) => {
 $("#review-button").onclick = () => {
   if (busy || !moves.length || tutorial >= 0) return;
   cancelAI();
+  if (isSpectating()) watchPaused = true;
   selected = null;
   replayPly = 0;
   render();
@@ -943,6 +1077,8 @@ function guide(tab = "essentials") {
       )}</tbody></table></div><div class="guide-prose"><h3>Three formation exceptions</h3><ul><li>Cavalry attacking two Archers kills both.</li><li>Cavalry attacking a stack with Heavy Infantry on top dies; both defenders survive.</li><li>Heavy Infantry attacking two Pikemen dies with the top Pikeman; the bottom survives.</li></ul><p>Otherwise attack the top unit once. If a defender remains, a surviving attacker stays at its origin in its original slot. A bottom Commander remains protected until promoted to top.</p></div>`;
   else
     content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the Commander to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement and retreat</h3><p>Units step straight or diagonally forward. Cavalry may take two forward steps through an empty intermediate square, without jumping or continuing after combat. In the enemy half, units except the Commander can also step sideways. At the enemy back rank, every class can step once in any direction. A Priestess may retreat when an enemy is adjacent; a Commander may retreat when an enemy is within two squares in any direction, regardless of blockers.</p><h3>Two units. One formation.</h3><p>Move onto a friendly solitary unit to join underneath it. Both slots can act: choose Top or Bottom in the unit panel, or press B while on the board. The top takes enemy attacks; its death promotes the bottom. You cannot freely reorder a stack. Your companion does not add melee strength.</p><h3>Arrows and allegiance</h3><p>An Archer shoots one or two squares along a straight or diagonal forward ray. Any occupied square blocks further fire. A shot kills a top Pikeman, Archer, or Priestess. Two Archers together can also shoot Cavalry and Heavy Infantry. Shooting never moves the Archer and never kills a Commander.</p><p>A Priestess converts an adjacent solitary Pikeman, Cavalry, Archer, or Heavy Infantry in place. Converted units immediately use their new side’s direction. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize Commander deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>Commander capture wins first. An army with no legal order loses. The third occurrence of an identical board, stack order, ownership, and side to move is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one order in local play. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
+  if (tab === "essentials")
+    content += `<div class="guide-prose"><h3>Watch the commanders</h3><p>Choose Watch a battle in the war camp to let two AI armies play. Select Squire, Knight, or Marshal independently for each banner. Pause stops the next order; during a cinematic, Pause after this order lets the current encounter finish. Next order advances one turn while paused. Pace changes the interval between turns, while Settings controls animation length. You can inspect units, save, or review the chronicle while paused. Restored spectator games and returning from review stay paused until Resume. Switching to another tab also pauses playback.</p></div>`;
   openModal(
     `<p class="eyebrow">The commander’s companion</p><h2 id="modal-title">Field guide</h2><div class="guide-tabs">${tabs.map(([id, name]) => `<button data-guide="${id}" class="${id === tab ? "active" : ""}" aria-pressed="${id === tab}">${name}</button>`).join("")}</div>${content}`,
   );

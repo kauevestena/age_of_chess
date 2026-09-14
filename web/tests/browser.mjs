@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
+import { spectatorChecks } from "./spectator.mjs";
 const require = createRequire(import.meta.url),
   { chromium } = require("playwright");
 const root = resolve(fileURLToPath(new URL("..", import.meta.url))),
@@ -417,6 +418,7 @@ try {
     "worker fallback plays a legal reply",
   );
   await limited.close();
+  await spectatorChecks(browser, url, monitor, check, out);
   check(errors.length === 0, `browser errors: ${errors.join("; ")}`);
   check(badRequests.length === 0, `failed assets: ${badRequests.join("; ")}`);
   check(external.length === 0, `external requests: ${external.join("; ")}`);

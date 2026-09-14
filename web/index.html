@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#172321" />
     <meta
       name="description"
-      content="A medieval game of tactical warfare. Lead six unit classes, build formations, and capture the enemy Commander. Play solo or with a friend."
+      content="A medieval game of tactical warfare. Play solo, challenge a friend, or watch two AI armies battle for the crown."
     />
     <title>Age of Chess — Warfare</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
@@ -45,7 +45,7 @@
             <h2>Choose your battle</h2>
             <fieldset>
               <legend>Battle mode</legend>
-              <div class="segmented">
+              <div class="segmented battle-modes">
                 <label
                   ><input type="radio" name="mode" value="solo" checked /><span
                     >Against the realm<small>Solo vs computer</small></span
@@ -56,8 +56,39 @@
                       >Two players · one device</small
                     ></span
                   ></label
+                ><label class="watch-option"
+                  ><input type="radio" name="mode" value="watch" /><span
+                    >Watch a battle<small
+                      >AI vs AI · spectator mode</small
+                    ></span
+                  ></label
                 >
               </div>
+            </fieldset>
+            <fieldset id="watch-field" hidden>
+              <legend>The two commanders</legend>
+              <div class="watch-lineup">
+                <label for="north-difficulty"
+                  ><span><i class="swatch north"></i>Azure Host · North</span>
+                  <select id="north-difficulty">
+                    <option value="squire">Squire</option>
+                    <option value="knight" selected>Knight</option>
+                    <option value="marshal">Marshal</option>
+                  </select>
+                </label>
+                <label for="south-difficulty"
+                  ><span><i class="swatch south"></i>Ember Host · South</span>
+                  <select id="south-difficulty">
+                    <option value="squire">Squire</option>
+                    <option value="knight" selected>Knight</option>
+                    <option value="marshal">Marshal</option>
+                  </select>
+                </label>
+              </div>
+              <p class="field-note">
+                Two armies command themselves. Sit back and watch the battle
+                unfold.
+              </p>
             </fieldset>
             <fieldset id="difficulty-field">
               <legend>Opponent</legend>
@@ -102,9 +133,9 @@
               </div>
             </fieldset>
             <button id="begin" class="primary wide">
-              <span data-icon="sword"></span>Begin battle<span
-                data-icon="arrow"
-              ></span>
+              <span data-icon="sword"></span
+              ><span id="begin-label">Begin battle</span
+              ><span data-icon="arrow"></span>
             </button>
             <button id="continue" class="secondary wide" hidden>
               Continue your battle
@@ -153,7 +184,7 @@
         <div class="game-layout">
           <aside class="left-command">
             <section class="panel army-panel">
-              <p class="eyebrow">The opposing army</p>
+              <p class="eyebrow" id="enemy-army-heading">The opposing army</p>
               <div class="commander-label">
                 <span id="enemy-crest"></span>
                 <div>
@@ -164,7 +195,7 @@
               <div id="enemy-roster" class="roster"></div>
             </section>
             <section class="panel unit-panel" id="unit-panel">
-              <p class="eyebrow">Unit orders</p>
+              <p class="eyebrow" id="unit-panel-heading">Unit orders</p>
               <div id="selected-art"></div>
               <h2 id="selected-name">Awaiting your orders</h2>
               <p id="selected-description">
@@ -178,6 +209,38 @@
             </button>
           </aside>
           <div class="battlefield">
+            <section
+              id="watch-controls"
+              class="watch-controls panel"
+              hidden
+              aria-label="Spectator controls"
+            >
+              <div class="watch-heading">
+                <p class="eyebrow">Spectator gallery</p>
+                <span id="watch-matchup"></span>
+              </div>
+              <div class="watch-buttons">
+                <button
+                  id="watch-toggle"
+                  class="secondary"
+                  aria-pressed="false"
+                >
+                  Pause
+                </button>
+                <button id="watch-step" class="secondary" disabled>
+                  Next order
+                </button>
+                <label for="watch-pace"
+                  >Pace
+                  <select id="watch-pace">
+                    <option value="250">Brisk</option>
+                    <option value="1200" selected>Steady</option>
+                    <option value="2500">Leisurely</option>
+                  </select>
+                </label>
+              </div>
+              <p id="watch-status" role="status" aria-live="polite"></p>
+            </section>
             <div class="board-frame ornate">
               <div
                 id="rank-labels"
@@ -231,10 +294,10 @@
           </div>
           <aside class="right-command">
             <section class="panel objective">
-              <p class="eyebrow">Your objective</p>
+              <p class="eyebrow" id="objective-heading">Your objective</p>
               <span data-icon="crown"></span>
               <h2>Claim the crown</h2>
-              <p>
+              <p id="objective-description">
                 Capture the enemy Commander.<br />Every decision shapes the
                 battle.
               </p>
@@ -250,7 +313,7 @@
               </p>
             </section>
             <section class="panel army-panel">
-              <p class="eyebrow">Your army</p>
+              <p class="eyebrow" id="player-army-heading">Your army</p>
               <div class="commander-label">
                 <span id="player-crest"></span>
                 <div>
@@ -297,7 +360,10 @@
           <p class="eyebrow">An encounter on the field</p>
           <h2 id="encounter-title"></h2>
         </div>
-        <button id="skip-battle">Skip animation <span>Esc</span></button>
+        <div class="cinema-actions">
+          <button id="pause-battle" hidden>Pause after this order</button
+          ><button id="skip-battle">Skip animation <span>Esc</span></button>
+        </div>
       </div>
       <div id="encounter-stage" class="encounter-stage">
         <canvas id="encounter-effects" aria-hidden="true"></canvas>
