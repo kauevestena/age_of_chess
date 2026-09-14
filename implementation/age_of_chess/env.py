@@ -1,14 +1,14 @@
-"""Rules-v3 engine with atomic validation, ordered friendly stacks and adjudication."""
+"""Rules-v4 engine with atomic validation, ordered friendly stacks and adjudication."""
 from __future__ import annotations
 import copy
 import numpy as np
 from .rules_loader import load_ruleset
 from .game_state import GameState, standard_setup
-from .movegen import gen_single_moves, ALL_DIRS
-from .combat import resolve_melee, attack_sector
-from .utils import action_mask_from_legal, opponent, in_bounds, encode_action
+from .movegen import gen_single_moves, gen_preparations, ALL_DIRS
+from .combat import resolve_melee, resolve_combat, attack_sector
+from .utils import action_mask_from_legal, opponent, in_bounds, encode_action, is_preparation, is_shot, shot_slot
 
-OBSERVATION_SHAPE = (29, 8, 8)
+OBSERVATION_SHAPE = (35, 8, 8)
 
 class Engine:
     def __init__(self, ruleset_path="rulesets/default.yaml", *, rules=None):
@@ -30,6 +30,11 @@ class Engine:
                 any(type(n) is not int or not 0 <= n <= 3 for n in state.retreat_counts.values()) or
                 all(n == 3 for n in state.retreat_counts.values())):
             raise ValueError("Invalid Commander retreat counts")
+        if (not isinstance(state.prepared, list) or len(state.prepared) > 3 or
+                len(set(state.prepared)) != len(state.prepared) or any(
+                    type(i) is not int or not 0 <= i < 64 or not state.board.grid[i//8][i%8].bottom
+                    or state.board.grid[i//8][i%8].top.side != state.to_move for i in state.prepared)):
+            raise ValueError("Invalid preparation state")
         self.state = state.copy()
         self.state.terminated = self.state.truncated = False
         self.state.winner = self.state.reason = None
@@ -54,11 +59,13 @@ class Engine:
         fr, fc, slot, tr, tc, kind = action
         src, dst = self.state.board.grid[fr][fc], self.state.board.grid[tr][tc]
         actor = (src.top, src.bottom)[slot]
-        if kind == 2 and dst.top.code == "B":
+        if is_preparation(kind):
+            return []
+        if is_shot(kind) and (dst.top, dst.bottom)[shot_slot(kind)].code == "B":
             return ["B"]
         if kind == 1:
             alive, top, bottom = resolve_melee(actor, dst.top, dst.bottom, self.rules,
-                                              from_pos=(fr, fc), to_pos=(tr, tc))
+                                              from_pos=(fr, fc), to_pos=(tr, tc), layout=dst.layout)
             if not alive:
                 return [actor.code]
             # A surviving Q can only advance if the defender square is cleared.
@@ -75,6 +82,10 @@ class Engine:
         return []
 
     def legal_actions(self):
+        orders = self.legal_orders()
+        return sorted(orders + gen_preparations(self.state, self.rules)) if orders else []
+
+    def legal_orders(self):
         actions = self.legal_actions_unfiltered()
         if not actions or not self.rules.game.minimal_loss.enabled:
             return actions
@@ -109,6 +120,11 @@ class Engine:
                     if unit:
                         channel = (0 if unit.side == agent else 12) + 6*slot + "PNBRQK".index(unit.code)
                         obs[channel, r, c] = 1
+                if sq.bottom:
+                    obs[29+sq.layout, r, c] = 1
+        for i in self.state.prepared:
+            obs[33, i//8, i%8] = 1
+        obs[34] = (self.rules.game.formation_rearrangements-len(self.state.prepared)) / self.rules.game.formation_rearrangements
         # Absolute coordinates match action IDs. Side/direction and turn are explicit.
         obs[24] = float(agent == "north")
         obs[25] = float(agent == self.state.to_move)
@@ -192,15 +208,24 @@ class Engine:
             u = square.remove_unit(which)
             event["losses"].append({"code": u.code, "side": u.side, "cause": cause})
             return u
+        if is_preparation(kind):
+            event["previous_layout"] = src.layout
+            src.layout = kind - 4
+            self.state.prepared.append(fr*8+fc)
+            event.update(layout=src.layout, winner=None, reason=None)
+            return event
         if kind == 0:
             dst.add_unit(src.remove_unit("bottom" if slot else "top"))
             event["moved"] = True
         elif kind == 1:
             top_code, bottom_code = dst.top.code, dst.bottom.code if dst.bottom else None
             event["approach"] = attack_sector((fr, fc), (tr, tc), dst.top.side)
-            event["stance"] = self.rules.game.combat.single[code][top_code] == "stance"
-            alive, top_alive, bottom_alive = resolve_melee(actor, dst.top, dst.bottom, self.rules,
-                                                          from_pos=(fr, fc), to_pos=(tr, tc))
+            resolution = resolve_combat(actor, dst.top, dst.bottom, self.rules,
+                                        from_pos=(fr, fc), to_pos=(tr, tc), layout=dst.layout)
+            event["formation"] = resolution
+            event["stance"] = any(wave["stance"] for wave in resolution["waves"])
+            alive, top_alive = resolution["alive"], resolution["survive"][0]
+            bottom_alive = resolution["survive"][1] if dst.bottom else False
             event["capture"] = {"def_top": top_code, "def_bottom": bottom_code,
                                 "att_alive": alive, "top_alive": top_alive, "bottom_alive": bottom_alive}
             if dst.bottom and not bottom_alive: remove(dst, "bottom", "melee")
@@ -211,8 +236,8 @@ class Engine:
                 dst.add_unit(src.remove_unit("bottom" if slot else "top"))
                 event["moved"] = True
             # Otherwise attacker remains in the original slot; no mixed stack.
-        elif kind == 2:
-            killed = remove(dst, "top", "ranged")
+        elif is_shot(kind):
+            killed = remove(dst, "bottom" if shot_slot(kind) else "top", "ranged")
             normal_targets = {c for a in self.rules.game.pieces[code].abilities
                               if a.name == "ranged" for c in a.targets}
             event["ranged"] = {"killed": killed.code, "power_shot": killed.code not in normal_targets}
@@ -226,6 +251,7 @@ class Engine:
         backward = (tr-fr) * (1 if side == "north" else -1) > 0
         self.state.retreat_counts[side] = (self.state.retreat_counts[side]+1
             if code == "K" and event["moved"] and backward else 0)
+        self.state.prepared = []
         self.state.to_move = opponent(side)
         self.state.move_count += 1
         key = self.state.position_key()

@@ -98,17 +98,17 @@ test("Pikemen beat Archers in either melee direction; arrows beat Pikemen", () =
   assert.deepEqual(shot.state.board[36], [3]);
   assert.deepEqual(shot.state.board[28], []);
 });
-test("ordered stack exceptions and partial outcomes preserve the origin slot", () => {
-  assert.deepEqual(melee(2, -3, -3), [true, false, false]);
-  assert.deepEqual(melee(2, -4, -5), [false, true, true]);
-  assert.deepEqual(melee(4, -1, -1), [false, false, true]);
+test("class counters apply to both defenders and the acting member leaves its companion", () => {
+  assert.deepEqual(melee(2, -3, -3, 36, 28), [true, false, false]);
+  assert.deepEqual(melee(2, -4, -5, 36, 28), [true, false, false]);
+  assert.deepEqual(melee(4, -1, -1, 36, 28), [true, false, false]);
   const s = setup([
     [36, [1, 4]],
     [28, [-3, -1]],
   ]);
   const out = transition(s, a(36, 28, 1, 1));
-  assert.deepEqual(out.state.board[36], [1, 4]);
-  assert.deepEqual(out.state.board[28], [-1]);
+  assert.deepEqual(out.state.board[36], [1]);
+  assert.deepEqual(out.state.board[28], [4]);
   validateState(out.state);
 });
 test("Cavalry passes single allies but cannot jump enemies or full formations", () => {
@@ -251,7 +251,7 @@ test("saved records reconstruct the board and repetition counts, rejecting tampe
     readRecord(JSON.stringify({ ...record, moves: [[0, 0, 0, 7, 7, 1]] })),
   );
 });
-test("all twelve guided lessons have a legal intended action and correct final victory", () => {
+test("all guided lessons have a legal intended action and correct final victory", () => {
   for (const lesson of LESSONS)
     assert(has(lesson.state(), lesson.action), lesson.title);
   assert.equal(

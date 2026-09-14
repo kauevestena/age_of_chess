@@ -4,6 +4,8 @@ import os, json, pygame
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 from implementation.age_of_chess.utils import encode_action
 
+from implementation.age_of_chess.combat import POSITIONS
+
 TILE = 72
 W, H = 8*TILE, 8*TILE
 FONT_SIZE = 22
@@ -27,14 +29,15 @@ def draw_board(screen, env):
             color = COLORS["light"] if (r+c)%2==0 else COLORS["dark"]
             pygame.draw.rect(screen, color, (c*TILE, r*TILE, TILE, TILE))
             sq = engine.state.board.grid[r][c]
-            y = r*TILE + TILE//2 + 10
-            x = c*TILE + TILE//2
-            for idx, u in enumerate(filter(None, [sq.bottom, sq.top])):
+            for slot, u in enumerate((sq.top, sq.bottom)):
                 if u:
-                    col = COLORS["north"] if u.side=="north" else COLORS["south"]
-                    pygame.draw.circle(screen, col, (x, y-20*idx), 20)
+                    position = POSITIONS[sq.layout][slot] if sq.bottom else "center"
+                    dx,dy = {"N":(0,-16), "S":(0,16), "W":(-16,0), "E":(16,0), "center":(0,0)}[position]
+                    x,y = c*TILE+TILE//2+dx, r*TILE+TILE//2+dy
+                    col = COLORS[u.side]
+                    pygame.draw.circle(screen, col, (x,y), 16)
                     txt = font.render(SYMBOL[u.code], True, COLORS["text"])
-                    screen.blit(txt, (x-7, y-20*idx-12))
+                    screen.blit(txt, (x-7,y-12))
 
 def load_events(jsonl_path):
     events = []
@@ -42,6 +45,8 @@ def load_events(jsonl_path):
         for line in f:
             if not line.strip(): continue
             rec = json.loads(line)
+            if rec.get("rules_version") != 4:
+                raise ValueError("This log predates rules v4 and cannot be replayed safely")
             events.append(rec)
     return events
 

@@ -20,7 +20,8 @@ def codes(square):
 @pytest.mark.parametrize('sector,dr,dc', SECTORS)
 @pytest.mark.parametrize('code', list('PNBR'))
 @pytest.mark.parametrize('source_slot', [0,1])
-@pytest.mark.parametrize('formation', [False,True])
+# Formation outcomes are covered by the v4 geometry tests.
+@pytest.mark.parametrize('formation', [False])
 def test_guarded_stance_every_sector_slot_and_owner(position, defender, sector, dr, dc, code, source_slot, formation):
     sign = 1 if defender == 'north' else -1
     fr,fc=3+dr*sign,3+dc*sign
@@ -41,8 +42,8 @@ def test_cross_class_counters_and_exceptions_ignore_facing(rules, sector, dr, dc
     origin=(3+dr,3+dc)
     for a,d,expected in [('P','B',(True,False,False)),('B','P',(False,True,False)),('Q','Q',(False,False,False)),('K','K',(True,False,False))]:
         assert resolve_melee(Unit(a,'south'),Unit(d,'north'),None,rules,from_pos=origin,to_pos=(3,3))==expected
-    # Matching bottom cannot protect the top Archer from a Pikeman.
-    assert resolve_melee(Unit('P','south'),Unit('B','north'),Unit('P','north'),rules,from_pos=origin,to_pos=(3,3))==(True,False,True)
+    # Every cross-class duel retains its counter inside a formation.
+    assert resolve_melee(Unit('P','south'),Unit('B','north'),Unit('B','north'),rules,from_pos=origin,to_pos=(3,3))==(True,False,False)
 
 def test_cavalry_stance_uses_origin_not_intermediate(position):
     e=position([(5,3,'N','north'),(3,3,'N','south'),(4,3,'PP','north')])
@@ -106,6 +107,8 @@ def test_backward_attack_does_not_grant_backward_quiet_moves(position):
 @pytest.mark.parametrize('slot', [0,1])
 def test_return_fire_all_rays_and_shooter_slots(position, sector, dr, dc, owner, slot):
     e=position([(3,3,'PB' if slot else 'BP',owner),(3+2*dr,3+2*dc,'BP',OTHER[owner])],side=owner)
+    # Place the Archer in the exposed subcell for this ray; screening is tested in v4.
+    e.state.board.grid[3+2*dr][3+2*dc].layout = 0 if dr >= 0 else 1
     event=e.apply((3,3,slot,3+2*dr,3+2*dc,2))
     assert event['ranged']['return_fire']
     assert codes(e.state.board.grid[3][3])=='P'
@@ -131,7 +134,7 @@ def test_retreat_resets_displacement_and_capture_priority(position,owner):
     e=make(); e.apply((*cell(3,3),0,*cell(4,4),1))
     assert e.state.reason=='commander_retreat_forfeit'
     e=make('BP',True); e.apply((*cell(3,3),1,*cell(4,4),1))
-    assert e.state.retreat_counts[owner]==0 and not e.state.done
+    assert e.state.retreat_counts[owner]==3 and e.state.reason=='commander_retreat_forfeit'
     for destination in [cell(3,2),cell(2,3)]:
         e=make();e.apply((*cell(3,3),0,*destination,0));assert e.state.retreat_counts[owner]==0
     e=make();e.apply((*cell(6,0),0,*cell(5,0),0));assert e.state.retreat_counts[owner]==0

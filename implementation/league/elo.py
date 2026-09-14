@@ -5,8 +5,8 @@ import math
 from collections import defaultdict
 
 def score_for_north(result):
-    """Only explicitly adjudicated v3 records contribute to scores/Elo."""
-    if result.get("rules_version") != 3 or result.get("truncated") or not result.get("terminated"):
+    """Only explicitly adjudicated v4 records contribute to scores/Elo."""
+    if result.get("rules_version") != 4 or result.get("truncated") or not result.get("terminated"):
         return None
     winner = result.get("winner")
     if winner == "draw": return 0.5

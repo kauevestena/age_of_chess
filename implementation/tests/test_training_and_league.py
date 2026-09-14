@@ -46,9 +46,9 @@ def test_no_farmable_conversion_bonus(position):
 def test_league_cap_is_not_a_draw_or_reward_win():
     r=play_game(RandomPolicy(),RandomPolicy(),"rulesets/default.yaml",max_steps=1)
     assert r.truncated and not r.terminated and r.winner is None and r.reason=="ply_limit"
-    d={"white":"A","black":"B","winner":None,"rules_version":3,"truncated":True,"terminated":False}
+    d={"white":"A","black":"B","winner":None,"rules_version":4,"truncated":True,"terminated":False}
     assert score_for_north(d) is None and compute_elo([d])=={}
-    # Legacy reward-adjudicated records are not silently mixed into v3 statistics.
+    # Legacy reward-adjudicated records are not silently mixed into v4 statistics.
     assert score_for_north({"winner":"north"}) is None
     assert score_for_north({**d, "rules_version":2, "winner":"north", "terminated":True, "truncated":False}) is None
     d.update(winner="draw",terminated=True,truncated=False)
@@ -67,10 +67,24 @@ def test_maskable_ppo_short_training_and_flat_checkpoint(tmp_path):
     model=sb3.MaskablePPO("MlpPolicy",env,n_steps=8,batch_size=4,n_epochs=1,
                          policy_kwargs={"net_arch":[16]},device="cpu",seed=7,verbose=0)
     model.learn(total_timesteps=16)
-    path=str(tmp_path/"v3_model.zip");model.save(path)
+    path=str(tmp_path/"v4_model.zip");model.save(path)
     policy=SB3Policy(path)
     aec=age_of_chess_v1();aec.reset(seed=8)
     action=policy.select(aec)
     assert aec.infos[aec.agent_selection]["action_mask"][action]
     aec.step(action)
     assert not aec.infos["north"].get("illegal_action")
+
+
+def test_league_rejects_old_action_space_even_with_updated_observations(monkeypatch):
+    from types import SimpleNamespace
+    from implementation.league.round_robin import SB3Policy
+    from implementation.age_of_chess.env import OBSERVATION_SHAPE
+    from implementation.age_of_chess.utils import ACTION_SPACE_SIZE
+    model=SimpleNamespace(observation_space=SimpleNamespace(shape=OBSERVATION_SHAPE),
+                          action_space=SimpleNamespace(n=32768))
+    monkeypatch.setattr(SB3Policy,"_load",lambda self:setattr(self,"model",model))
+    with pytest.raises(ValueError,match="incompatible actions"):
+        SB3Policy("old-actions.zip")
+    model.action_space.n=ACTION_SPACE_SIZE
+    assert SB3Policy("v4-actions.zip").model is model

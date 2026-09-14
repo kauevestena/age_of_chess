@@ -1,6 +1,9 @@
 import { RULES } from "./rules.mjs";
+import { attackSector, resolveCombat, meleeAllowed, contactSlots, canonicalLayout,
+  defaultLayout, physicalPosition, layoutLabel, isPreparation, isShot, shotSlot } from "./formations.mjs";
+export { attackSector, resolveCombat, layoutLabel, isPreparation, isShot, shotSlot } from "./formations.mjs";
 
-// North is +1, South is -1. Each square is [top, bottom], signed class IDs.
+// North is +1, South is -1. Each square holds logical [A, B], signed class IDs.
 export const CODES = "PNBRQK";
 export const code = (unit) => CODES[Math.abs(unit) - 1];
 export const side = (unit) => Math.sign(unit);
@@ -9,7 +12,7 @@ export const squareName = (index) =>
   "abcdefgh"[index % 8] + (8 - Math.floor(index / 8));
 export const actionKey = (action) => action.join(",");
 export const positionKey = (state) =>
-  `${state.turn}|${state.retreats.join(",")}|${state.board.map((sq) => sq.join(",")).join(";")}`;
+  `${state.turn}|${state.retreats.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i])).join(";")}`;
 const inside = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
 const directions = [-1, 0, 1].flatMap((r) =>
   [-1, 0, 1].filter((c) => r || c).map((c) => [r, c]),
@@ -38,12 +41,16 @@ export function cloneState(state) {
     board: state.board.map((s) => [...s]),
     counts: { ...state.counts },
     retreats: [...state.retreats],
+    layout: [...state.layout],
+    prepared: [...state.prepared],
   };
 }
 
-export function studyState(board, turn = 1, retreats = [0, 0]) {
+export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = []) {
   const state = {
     board: board.map((s) => [...s]),
+    layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq)),
+    prepared: [...prepared],
     turn,
     ply: 0,
     winner: null,
@@ -87,16 +94,15 @@ export function validateState(s) {
       if (Math.abs(u) >= 5 && (special[u] = (special[u] || 0) + 1) > 1)
         throw Error("Duplicate Commander or Priestess");
   }
+  if (!Array.isArray(s.layout) || s.layout.length !== 64 || s.layout.some((l, i) =>
+    !Number.isInteger(l) || (s.board[i].length < 2 ? l !== -1 : l < 0 || l > 3 || canonicalLayout(s.board[i], l) !== l)))
+    throw Error("Invalid formation layout");
+  if (!Array.isArray(s.prepared) || s.prepared.length > RULES.formation_rearrangements || new Set(s.prepared).size !== s.prepared.length || s.prepared.some(i =>
+    !Number.isInteger(i) || i < 0 || i >= 64 || s.board[i].length !== 2 || side(s.board[i][0]) !== s.turn))
+    throw Error("Invalid preparation state");
   return true;
 }
 
-export function attackSector(from, to, defender) {
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from === to)
-    throw Error("Same-type melee requires source and target squares");
-  const forward = (Math.floor(to / 8) - Math.floor(from / 8)) * side(defender),
-    right = ((from % 8) - (to % 8)) * side(defender);
-  return (forward > 0 ? 2 : forward < 0 ? 8 : 5) + Math.sign(right);
-}
 export const approachLabel = (sector) =>
   sector === 2
     ? "Guarded front"
@@ -108,26 +114,9 @@ export const approachLabel = (sector) =>
 export const cavalryPassable = (square, owner) =>
   !square.length || (square.length === 1 && side(square[0]) === owner);
 
-export function melee(actor, top, bottom, from, to) {
-  const a = code(actor),
-    d = code(top),
-    b = bottom ? code(bottom) : null;
-  if (side(actor) === side(top)) throw Error("Friendly melee");
-  if (d === "K") return [true, false, !!bottom];
-  const result = RULES.combat.single[a][d];
-  if (result === "stance") {
-    const sector = attackSector(from, to, top);
-    return [![1, 2, 3].includes(sector), sector === 2, !!bottom];
-  }
-  if (bottom)
-    for (const match of [b, "*"]) {
-      const rule = RULES.combat.stacks.find(
-        (r) => r.attacker === a && r.top === d && r.bottom === match,
-      );
-      if (rule) return [...rule.outcome];
-    }
-  if (result === "illegal") throw Error("Forbidden melee");
-  return [result === "win", result === "lose", !!bottom];
+export function melee(actor, top, bottom, from, to, layout) {
+  const result = resolveCombat(actor, bottom ? [top, bottom] : [top], from, to, layout);
+  return [result.alive, result.survive[0], result.survive[1] || false];
 }
 
 function enemyNear(state, r, c, owner, radius) {
@@ -166,7 +155,7 @@ export function unfilteredActions(state) {
           if (!attackOnly) add(rr, cc, 0);
         } else if (
           side(dst[0]) !== owner &&
-          RULES.combat.single[code(unit)][code(dst[0])] !== "illegal"
+          meleeAllowed(unit, dst, index, rr * 8 + cc, state.layout[rr * 8 + cc])
         )
           add(rr, cc, 1);
       };
@@ -256,11 +245,9 @@ export function unfilteredActions(state) {
               if (!inside(rr, cc)) break;
               const dst = state.board[rr * 8 + cc];
               if (dst.length) {
-                if (
-                  side(dst[0]) !== owner &&
-                  ability.targets.includes(code(dst[0]))
-                )
-                  add(rr, cc, 2);
+                if (side(dst[0]) !== owner)
+                  for (const target of contactSlots(index, rr * 8 + cc, dst, state.layout[rr * 8 + cc]))
+                    if (ability.targets.includes(code(dst[target]))) add(rr, cc, target ? 8 : 2);
                 break;
               }
             }
@@ -275,7 +262,7 @@ function ownDeaths(state, action) {
   const [r, c, slot, rr, cc, kind] = action,
     actor = state.board[r * 8 + c][slot];
   let arrives = kind === 0;
-  if (kind === 2 && code(state.board[rr * 8 + cc][0]) === "B") return ["B"];
+  if (isShot(kind) && code(state.board[rr * 8 + cc][shotSlot(kind)]) === "B") return ["B"];
   if (kind === 1) {
     const dst = state.board[rr * 8 + cc];
     const [alive, top, bottom] = melee(
@@ -284,6 +271,7 @@ function ownDeaths(state, action) {
       dst[1],
       r * 8 + c,
       rr * 8 + cc,
+      state.layout[rr * 8 + cc],
     );
     if (!alive) return [code(actor)];
     arrives = !top && !bottom;
@@ -301,7 +289,19 @@ function ownDeaths(state, action) {
   return [];
 }
 
+export function preparationActions(state) {
+  if (state.winner !== null || state.prepared.length >= RULES.formation_rearrangements) return [];
+  return state.board.flatMap((sq, i) => sq.length === 2 && side(sq[0]) === state.turn && !state.prepared.includes(i)
+    ? [0, 1, 2, 3].filter(l => l !== state.layout[i] && canonicalLayout(sq, l) === l)
+      .map(l => [i >> 3, i % 8, 0, i >> 3, i % 8, 4 + l]) : []);
+}
+
 export function legalActions(state) {
+  const orders = legalOrders(state);
+  return orders.length ? [...orders, ...preparationActions(state)].sort(lex) : [];
+}
+
+export function legalOrders(state) {
   const actions = unfilteredActions(state);
   if (!RULES.minimal_loss.enabled || !actions.length) return actions;
   const scored = [];
@@ -344,6 +344,7 @@ function priestessDeaths(state, losses) {
     .sort((a, b) => b.i - a.i || b.slot - a.slot)
     .forEach((q) => {
       state.board[q.i].splice(q.slot, 1);
+      state.layout[q.i] = -1;
       losses.push({
         unit: q.u,
         at: q.i,
@@ -389,7 +390,7 @@ export function transition(state, action, trusted = false) {
     (!Array.isArray(action) ||
       action.length !== 6 ||
       action.some(
-        (x, i) => !Number.isInteger(x) || x < 0 || x >= [8, 8, 2, 8, 8, 4][i],
+        (x, i) => !Number.isInteger(x) || x < 0 || x >= [8, 8, 2, 8, 8, 9][i],
       ) ||
       !legalActions(state).some((a) => actionKey(a) === actionKey(action)))
   )
@@ -410,18 +411,31 @@ export function transition(state, action, trusted = false) {
     losses: [],
     kind,
     moved: false,
+    defenderLayout: state.layout[to],
+    order: state.ply + 1,
   };
   const remove = (sq, at, index, cause) => {
     const [unit] = sq.splice(index, 1);
     event.losses.push({ unit, at, slot: index, cause });
   };
+  if (isPreparation(kind)) {
+    event.previousLayout = next.layout[from];
+    next.layout[from] = kind - 4;
+    next.prepared.push(from);
+    event.layout = next.layout[from];
+    event.winner = null;
+    event.reason = null;
+    return { state: next, event };
+  }
   if (kind === 0) {
     dst.push(...src.splice(slot, 1));
     event.moved = true;
   } else if (kind === 1) {
     event.approach = attackSector(from, to, dst[0]);
-    event.stance = RULES.combat.single[code(actor)][code(dst[0])] === "stance";
-    const [alive, top, bottom] = melee(actor, dst[0], dst[1], from, to);
+    const resolution = resolveCombat(actor, dst, from, to, state.layout[to]);
+    event.formation = resolution;
+    event.stance = resolution.waves.some(wave => wave.stance);
+    const [alive, top, bottom] = [resolution.alive, resolution.survive[0], resolution.survive[1] || false];
     event.survival = [alive, top, bottom];
     if (dst.length === 2 && !bottom) remove(dst, to, 1, "melee");
     if (!top) remove(dst, to, 0, "melee");
@@ -430,9 +444,10 @@ export function transition(state, action, trusted = false) {
       dst.push(...src.splice(slot, 1));
       event.moved = true;
     }
-  } else if (kind === 2) {
-    const returnsFire = code(dst[0]) === "B";
-    remove(dst, to, 0, "ranged");
+  } else if (isShot(kind)) {
+    event.targetSlot = shotSlot(kind);
+    const returnsFire = code(dst[event.targetSlot]) === "B";
+    remove(dst, to, event.targetSlot, "ranged");
     if (returnsFire) {
       remove(src, from, slot, "return_fire");
       event.returnFire = true;
@@ -441,6 +456,9 @@ export function transition(state, action, trusted = false) {
     event.converted = dst[0];
     dst[0] *= -1;
   }
+  next.layout[from] = canonicalLayout(src, next.layout[from]);
+  next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst) : canonicalLayout(dst, next.layout[to]);
+  next.prepared = [];
   priestessDeaths(next, event.losses);
   const retreatIndex = state.turn === 1 ? 0 : 1;
   next.retreats[retreatIndex] =
@@ -460,15 +478,16 @@ export function transition(state, action, trusted = false) {
 export function describeEvent(event) {
   const destination = squareName(event.to),
     who = label(event.actor);
+  if (isPreparation(event.kind)) return `Formation at ${destination} rearranges: ${layoutLabel(event.layout)}. A normal order is still required.`;
   if (event.kind === 3)
     return `${who} converts ${label(event.converted)} at ${destination}.`;
-  if (event.kind === 2)
+  if (isShot(event.kind))
     return event.returnFire
       ? `Archer fires at ${destination}. The defending Archer returns fire; both Archers fall.`
       : `${who} fires at ${destination}. ${event.losses.map((l) => label(l.unit)).join(" and ")} ${event.losses.length === 1 ? "falls" : "fall"}.`;
   if (event.kind === 1) {
     const losses = event.losses.map((l) => label(l.unit)).join(" and ");
-    return `${who} attacks ${destination}.${event.stance ? ` ${approachLabel(event.approach)}: ${event.approach === 2 ? "defender holds" : [1, 3].includes(event.approach) ? "both fall" : "attacker wins"}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}`;
+    return `${who} attacks ${destination}.${event.formation.mode === "serial" ? " The reserve turns and engages." : event.formation.mode === "braced_line" ? " Both defenders brace the front." : event.formation.mode === "simultaneous" ? " Both defenders engage together." : event.stance ? ` ${approachLabel(event.approach)}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}`;
   }
   return `${who} ${event.defender.length ? "joins the formation at" : "advances to"} ${destination}.${event.losses.length ? " Opposing Priestesses fall together." : ""}`;
 }

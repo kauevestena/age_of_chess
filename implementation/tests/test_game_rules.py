@@ -25,8 +25,8 @@ def test_same_type_mutual(rules, code):
     assert resolve_melee(Unit(code,"north"),Unit(code,"south"),None,rules) == (False,False,False)
 
 @pytest.mark.parametrize("att,stack,source,target", [
-    ("N","BB",None,"N"), ("N","PP",None,"PP"), ("N","RP",None,"RP"),
-    ("R","PP",None,"P"), ("R","BQ","R","Q"), ("P","NP","P","P"),
+    ("N","BB",None,"N"), ("N","PP",None,"PP"), ("N","RP",None,"P"),
+    ("R","PP",None,"R"), ("R","BQ",None,"R"), ("P","NP",None,"P"),
 ])
 def test_stack_resolution(position, att, stack, source, target):
     row = 5 if att == "N" else 4
@@ -37,12 +37,13 @@ def test_stack_resolution(position, att, stack, source, target):
     assert codes(e.state.board.grid[3][3]) == target
     e.state.board.validate()
 
-def test_surviving_attacker_preserves_source_slot(position):
+def test_attacking_member_moves_after_clearing_both_defenders(position):
     e=position([(4,3,"PR","north"),(3,3,"BQ","south")])
     e.apply((4,3,1,3,3,1))
     s=e.state.board.grid[4][3]
-    assert (s.top.code,s.bottom.code)==("P","R")
-    assert e.state.board.grid[3][3].top.side=="south"
+    assert s.top.code == "P" and s.bottom is None
+    assert e.state.board.grid[3][3].top.code == "R"
+    assert e.state.board.grid[3][3].top.side == "north"
 
 def test_cavalry_cannot_jump_but_can_attack_first_step(position):
     e=position([(4,3,"N","north"),(3,4,"P","south")])

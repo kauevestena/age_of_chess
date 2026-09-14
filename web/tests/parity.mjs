@@ -47,6 +47,7 @@ try {
       validateState(result.state);
       assert.equal(result.event.approach ?? null, sample.approach);
       assert.equal(result.event.stance ?? null, sample.stance);
+      assert.deepEqual(result.event.formation ?? null, sample.formation, `Contact waves at sample ${count}`);
       const losses = result.event.losses.map((l) => ({
         code: code(l.unit),
         side: l.unit > 0 ? "north" : "south",

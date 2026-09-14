@@ -75,7 +75,7 @@ class CombatSpec(StrictModel):
 
 class GameSpec(StrictModel):
     name: str
-    version: Literal[3]
+    version: Literal[4]
     attack_all_directions: Literal[True]
     lone_commander_loses: Literal[True]
     commander_retreat_limit: Literal[3]
@@ -83,6 +83,8 @@ class GameSpec(StrictModel):
     same_type_stance: Literal["guarded_center"]
     frontal_enemy_sidesteps: Literal[True]
     cavalry_pass_single_ally: Literal[True]
+    formation_rearrangements: Literal[3]
+    formation_combat: Literal["ready_reserve"]
     board: BoardSpec
     minimal_loss: MinimalLossSpec
     pieces: dict[str, PieceSpec]
@@ -102,19 +104,13 @@ class GameSpec(StrictModel):
             for defender, result in row.items():
                 if (result == "stance") != (actor == defender and actor in "PNBR"):
                     raise ValueError("Guarded stance is required only for equal ordinary classes")
-        for rule in self.combat.stacks:
-            if rule.top == "K":
-                raise ValueError("Stack overrides cannot override Commander capture")
-            if rule.attacker == rule.top and rule.top in "PNBR":
-                raise ValueError("Stack overrides cannot override guarded stance")
-            if rule.attacker not in CODES or rule.top not in CODES or rule.bottom not in CODES + "*":
-                raise ValueError("unknown stack combat class")
-        seen = set()
-        for rule in self.combat.stacks:
-            key = (rule.attacker, rule.top, rule.bottom)
-            if key in seen:
-                raise ValueError("duplicate stack combat rule")
-            seen.add(key)
+        if self.combat.stacks:
+            raise ValueError("Formation overrides cannot replace class counters")
+        wins = {("P", "N"), ("P", "B"), ("N", "B"), ("N", "R"), ("R", "P"), ("R", "B")}
+        for actor in "PNBR":
+            for defender in "PNBR":
+                if actor != defender and self.combat.single[actor][defender] != ("win" if (actor, defender) in wins else "lose"):
+                    raise ValueError("Rules v4 requires unconditional ordinary-class counters")
         for code, piece in self.pieces.items():
             names = [a.name for a in piece.abilities]
             if len(set(names)) != len(names):

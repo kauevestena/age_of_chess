@@ -13,13 +13,13 @@ This project includes simple baselines, a self‑play Gym wrapper, SB3 training 
 
 ## PettingZoo AEC env
 - Entry point: `implementation/age_of_chess/pettingzoo_env.py` → `age_of_chess_v1(...)`
-- Observation: `(29, 8, 8)` planes (channel‑first)
+- Observation: `(35, 8, 8)` planes (channel‑first)
 - Discrete action space encodes `(from_row, from_col, slot, to_row, to_col, move_type)`
 - `infos[agent]["action_mask"]` is provided on every turn.
 
 ## Self‑play wrapper for SB3
 - `implementation/age_of_chess/sb3_env.py` → `AOCSingleAgentSelfPlayEnv`
-  - Keeps a **single learning side per episode** against an explicit opponent; each step includes its reply.
+  - Keeps a **single learning side per episode** against an explicit opponent; each normal-order step includes its preparations and reply; learner preparations retain control.
   - Compatible with **ActionMasker** (`sb3_contrib` MaskablePPO). Use `env.get_action_mask()`.
 
 ### Training scripts
@@ -78,9 +78,13 @@ python -m implementation.league.report
 
 Rewards are terminal-only and zero-sum: win +1, loss −1, draw 0. Conversions and
 captures do not pay bonuses. A ply cap is truncation, not a draw or a reward win.
-Old 12/27-plane checkpoints and old action IDs are incompatible and must be retrained.
+Old 12/27/29-plane checkpoints and old action IDs are incompatible and must be retrained.
 Use `engine.state.winner` and `reason`, never reward totals, for adjudication.
-The 29-plane observation encodes both slots and own/opponent retreat counters; full repetition history is in infos.
+The 35-plane observation encodes A/B classes, arrangements, preparations, remaining
+budget and both retreat counters; full repetition history is in infos. Actions use
+nine kinds (73,728 IDs). A preparation keeps the current player and pays zero reward;
+the normal order ends that turn. Opponent wrappers finish all preparations before
+returning control. Greedy uses a bounded defensive preparation planner.
 
 Core `RandomAgent`/`GreedyAgent` receive an Engine and return action tuples. The
 league's policy interface receives the AEC environment and returns an encoded ID.

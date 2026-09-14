@@ -2083,3 +2083,22 @@
   font-size: 13px;
   margin-top: 8px;
 }
+
+/* A/B figures occupy physical subcells. The board flip only changes the view. */
+.board-cell.stacked .unit-art[data-position] { width: 66%; height: 70%; bottom: auto; z-index: 3; transform: none; }
+.board-cell.stacked .unit-art[data-position="N"] { left: 17%; top: -9%; }
+.board-cell.stacked .unit-art[data-position="S"] { left: 17%; top: 33%; z-index: 4; }
+.board-cell.stacked .unit-art[data-position="W"] { left: -8%; top: 12%; }
+.board-cell.stacked .unit-art[data-position="E"] { left: 42%; top: 12%; z-index: 4; }
+.board-cell.stacked .stack-badge { font-size: 10px; width: auto; min-width: 30px; padding: 1px 3px; white-space: nowrap; }
+#formation-controls { margin-top: 12px; grid-column: 1 / -1; }
+.formation-heading { color: var(--gold); font-family: var(--font-title); font-size: 13px; margin-bottom: 7px; }
+.formation-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.formation-options button { border: 1px solid var(--line); border-radius: 3px; padding: 7px 3px; font-size: 12px; color: var(--ink); min-height: 36px; }
+.formation-options button[aria-pressed="true"] { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 15%, transparent); }
+.formation-options button:disabled { opacity: .55; cursor: default; }
+.formation-note { font-size: 12px; margin-top: 7px; color: var(--muted); }
+#formation-budget { color: var(--gold); font-size: 13px; margin-top: 9px; }
+@media (pointer: coarse) { .formation-options button { min-height: 44px; } }
+
+.combat-member { position: absolute; bottom: -15px; left: 0; right: 0; text-align: center; font-family: var(--font-title); color: var(--gold); font-size: 12px; }
