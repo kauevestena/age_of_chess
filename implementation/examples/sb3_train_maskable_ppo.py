@@ -11,7 +11,7 @@ def mask_fn(env):
 
 def main():
     env = AOCSingleAgentSelfPlayEnv("rulesets/default.yaml")
-    # Keep channel-first obs (27,8,8); MaskablePPO MlpPolicy can handle non-flat obs,
+    # Keep channel-first obs (29,8,8); MaskablePPO MlpPolicy can handle non-flat obs,
     # but for stability we flatten.
     env = FlattenObservation(env)
     env = ActionMasker(env, mask_fn)

@@ -70,12 +70,19 @@ class StackRule(StrictModel):
     outcome: tuple[bool, bool, bool]
 
 class CombatSpec(StrictModel):
-    single: dict[str, dict[str, Literal["win", "lose", "mutual", "illegal"]]]
+    single: dict[str, dict[str, Literal["win", "lose", "mutual", "illegal", "stance"]]]
     stacks: list[StackRule]
 
 class GameSpec(StrictModel):
     name: str
-    version: Literal[2]
+    version: Literal[3]
+    attack_all_directions: Literal[True]
+    lone_commander_loses: Literal[True]
+    commander_retreat_limit: Literal[3]
+    archer_return_fire: Literal[True]
+    same_type_stance: Literal["guarded_center"]
+    frontal_enemy_sidesteps: Literal[True]
+    cavalry_pass_single_ally: Literal[True]
     board: BoardSpec
     minimal_loss: MinimalLossSpec
     pieces: dict[str, PieceSpec]
@@ -91,9 +98,15 @@ class GameSpec(StrictModel):
                 raise ValueError("single combat matrix must specify all 36 ordered pairs")
         if any(row["K"] != "win" for row in self.combat.single.values()):
             raise ValueError("Commander capture must be a win for every attacker")
+        for actor, row in self.combat.single.items():
+            for defender, result in row.items():
+                if (result == "stance") != (actor == defender and actor in "PNBR"):
+                    raise ValueError("Guarded stance is required only for equal ordinary classes")
         for rule in self.combat.stacks:
             if rule.top == "K":
                 raise ValueError("Stack overrides cannot override Commander capture")
+            if rule.attacker == rule.top and rule.top in "PNBR":
+                raise ValueError("Stack overrides cannot override guarded stance")
             if rule.attacker not in CODES or rule.top not in CODES or rule.bottom not in CODES + "*":
                 raise ValueError("unknown stack combat class")
         seen = set()

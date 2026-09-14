@@ -9,7 +9,7 @@ def test_rules_load(rules):
 
 def test_rulesheet_table_matches_executable_rules(rules):
     codes = "PNBRQK"
-    symbols = {"win":"W", "lose":"L", "mutual":"M", "illegal":"—"}
+    symbols = {"win":"W", "lose":"L", "mutual":"M", "stance":"S", "illegal":"—"}
     expected = ["| Attacker / Defender | P | N | B | R | Q | K |",
                 "|---|:---:|:---:|:---:|:---:|:---:|:---:|"]
     expected += ["| " + c + " | " + " | ".join(symbols[rules.game.combat.single[c][d]] for d in codes) + " |" for c in codes]

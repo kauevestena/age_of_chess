@@ -30,6 +30,9 @@ def clear_los(state, r0, c0, r1, c1):
     sr, sc = (dr > 0)-(dr < 0), (dc > 0)-(dc < 0)
     return all(state.board.grid[r0+k*sr][c0+k*sc].is_empty() for k in range(1, distance))
 
+def cavalry_passable(square, side):
+    return square.is_empty() or (square.top.side == side and square.bottom is None)
+
 def gen_single_moves(state, rules):
     if state.done:
         return []
@@ -44,11 +47,11 @@ def gen_single_moves(state, rules):
                 movement = spec.move
                 dirs = [(dr if side == "north" else -dr, dc) for dr, dc in movement.steps]
 
-                def destination(rr, cc):
+                def destination(rr, cc, attack_only=False):
                     if not in_bounds(rr, cc, rows, cols): return
                     target = state.board.grid[rr][cc]
                     if target.is_empty() or (target.top.side == side and target.bottom is None):
-                        actions.add((r, c, slot, rr, cc, 0))
+                        if not attack_only: actions.add((r, c, slot, rr, cc, 0))
                     elif target.top.side != side:
                         if rules.game.combat.single[unit.code][target.top.code] != "illegal":
                             actions.add((r, c, slot, rr, cc, 1))
@@ -57,7 +60,7 @@ def gen_single_moves(state, rules):
                     rr, cc = r+dr, c+dc
                     if not in_bounds(rr, cc, rows, cols): continue
                     destination(rr, cc)
-                    if movement.max_steps == 2 and state.board.grid[rr][cc].is_empty():
+                    if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
                         for dr2, dc2 in dirs:
                             destination(rr+dr2, cc+dc2)
                 extra = []
@@ -72,6 +75,22 @@ def gen_single_moves(state, rules):
                     extra = SIDEWAYS_DIRS
                 for dr, dc in extra:
                     destination(r+dr, c+dc)
+                ahead = r + (-1 if side == "north" else 1)
+                if in_bounds(ahead, c, rows, cols):
+                    enemy = state.board.grid[ahead][c].top
+                    if enemy and enemy.side != side:
+                        for dr, dc in SIDEWAYS_DIRS:
+                            destination(r+dr, c+dc)
+
+                # Direction freedom is only for an enemy destination. A Cavalry
+                # may pass one ally, but not a full formation or an enemy.
+                for dr, dc in ALL_DIRS:
+                    rr, cc = r+dr, c+dc
+                    if not in_bounds(rr, cc, rows, cols): continue
+                    destination(rr, cc, attack_only=True)
+                    if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
+                        for dr2, dc2 in ALL_DIRS:
+                            destination(rr+dr2, cc+dc2, attack_only=True)
 
                 for ability in spec.abilities:
                     if ability.name == "convert":
@@ -86,7 +105,7 @@ def gen_single_moves(state, rules):
                         if ability.requires_stack_size == 2 and not (
                             sq.top and sq.bottom and sq.top.code == sq.bottom.code == "B"):
                             continue
-                        for dr, dc in forward_dirs(side):
+                        for dr, dc in ALL_DIRS:
                             for distance in range(1, ability.range+1):
                                 rr, cc = r+distance*dr, c+distance*dc
                                 if not in_bounds(rr, cc, rows, cols): break

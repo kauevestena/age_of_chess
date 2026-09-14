@@ -112,7 +112,7 @@ class SB3Policy(Policy):
         from implementation.age_of_chess.env import OBSERVATION_SHAPE
         import numpy as np
         if self.model.observation_space.shape not in (OBSERVATION_SHAPE, (int(np.prod(OBSERVATION_SHAPE)),)):
-            raise ValueError("Checkpoint uses incompatible observations; retrain for rules v2")
+            raise ValueError("Checkpoint uses incompatible observations; retrain for rules v3")
 
     def _load(self):
         # Try MaskablePPO first, then A2C
@@ -201,7 +201,7 @@ def run_league(ruleset: str = "rulesets/default.yaml", games_per_pair: int = 4, 
                     "winner": res.winner,
                     "rewards": res.rewards,
                     "steps": res.steps,
-                    "rules_version": 2,
+                    "rules_version": 3,
                     "terminated": res.terminated, "truncated": res.truncated,
                     "reason": res.reason, "seed": seed+k//2,
                 }

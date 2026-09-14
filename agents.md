@@ -13,7 +13,7 @@ This project includes simple baselines, a self‑play Gym wrapper, SB3 training 
 
 ## PettingZoo AEC env
 - Entry point: `implementation/age_of_chess/pettingzoo_env.py` → `age_of_chess_v1(...)`
-- Observation: `(27, 8, 8)` planes (channel‑first)
+- Observation: `(29, 8, 8)` planes (channel‑first)
 - Discrete action space encodes `(from_row, from_col, slot, to_row, to_col, move_type)`
 - `infos[agent]["action_mask"]` is provided on every turn.
 
@@ -78,9 +78,9 @@ python -m implementation.league.report
 
 Rewards are terminal-only and zero-sum: win +1, loss −1, draw 0. Conversions and
 captures do not pay bonuses. A ply cap is truncation, not a draw or a reward win.
-Old 12-plane checkpoints and old action IDs are incompatible and must be retrained.
+Old 12/27-plane checkpoints and old action IDs are incompatible and must be retrained.
 Use `engine.state.winner` and `reason`, never reward totals, for adjudication.
-The 27-plane observation encodes both slots; full repetition history is in infos.
+The 29-plane observation encodes both slots and own/opponent retreat counters; full repetition history is in infos.
 
 Core `RandomAgent`/`GreedyAgent` receive an Engine and return action tuples. The
 league's policy interface receives the AEC environment and returns an encoded ID.

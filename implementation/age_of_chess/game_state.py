@@ -81,6 +81,7 @@ class GameState:
     reason: str | None = None
     move_count: int = 0
     position_counts: dict[tuple, int] = field(default_factory=dict)
+    retreat_counts: dict[str, int] = field(default_factory=lambda: {"north": 0, "south": 0})
 
     @property
     def done(self):
@@ -91,11 +92,13 @@ class GameState:
             if u is None: return 0
             return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1)
         return (self.to_move, tuple(key(u) for row in self.board.grid for sq in row
-                                  for u in (sq.top, sq.bottom)))
+                                  for u in (sq.top, sq.bottom)),
+                (self.retreat_counts["north"], self.retreat_counts["south"]))
 
     def copy(self):
         return GameState(self.board.copy(), self.to_move, self.terminated, self.truncated,
-                         self.winner, self.reason, self.move_count, self.position_counts.copy())
+                         self.winner, self.reason, self.move_count, self.position_counts.copy(),
+                         self.retreat_counts.copy())
 
 def standard_setup(rows=8, cols=8):
     if (rows, cols) != (8, 8):

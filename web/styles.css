@@ -2058,3 +2058,28 @@
     }
   }
 }
+
+/* Facing stays tied to army ownership; the glyph rotates with the board view. */
+.facing-indicator {
+  position: absolute;
+  top: 3%;
+  right: 7%;
+  z-index: 5;
+  color: #fff3c9;
+  font:
+    bold clamp(11px, 1.3vw, 18px) Georgia,
+    serif;
+  line-height: 1;
+  text-shadow:
+    0 1px 3px #000,
+    0 0 3px #000;
+  pointer-events: none;
+}
+.outcome-stance {
+  color: var(--gold);
+}
+#commander-retreats {
+  color: var(--gold);
+  font-size: 13px;
+  margin-top: 8px;
+}

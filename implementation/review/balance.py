@@ -1,4 +1,4 @@
-"""Seeded paired-color games on rules v2; unresolved games are never draws.
+"""Seeded paired-color games on rules v3; unresolved games are never draws.
 
 Run from repo root: python -m implementation.review.balance --workers 4
 Process workers are independent simulation jobs, not learning agents.
@@ -109,7 +109,7 @@ def main():
     p.add_argument("--search-pairs",type=int,default=250)
     p.add_argument("--max-plies",type=int,default=512)
     p.add_argument("--workers",type=int,default=4)
-    p.add_argument("--out",default="implementation/review/results_v2")
+    p.add_argument("--out",default="implementation/review/results_v3")
     args=p.parse_args()
     if min(args.pairs,args.search_pairs)<0 or args.max_plies<1: p.error("invalid sample size or cap")
     out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
@@ -134,7 +134,7 @@ def main():
     with (out/"games.csv").open("w",newline="") as f:
         w=csv.DictWriter(f,fieldnames=list(records[0]) if records else [])
         w.writeheader();w.writerows(records)
-    summary={"rules_version":2,"base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+    summary={"rules_version":3,"base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
              "source_sha256":source_hash(args.ruleset),"rules_sha256":hashlib.sha256(Path(args.ruleset).read_bytes()).hexdigest(),
              "games":len(records),"plies":sum(r["plies"] for r in records),"max_plies":args.max_plies,
              "invariant_failures":0,"action_codec_failures":0,

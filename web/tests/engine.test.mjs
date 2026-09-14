@@ -18,6 +18,14 @@ const setup = (units, turn = 1) => {
   b[63] = [6];
   b[0] = [-6];
   for (const [i, s] of units) b[i] = s;
+  for (const owner of [1, -1])
+    if (b.flat().filter((u) => Math.sign(u) === owner).length === 1) {
+      const back = owner === 1 ? 56 : 0;
+      const i = Array.from({ length: 8 }, (_, c) => back + 7 - c).find(
+        (i) => !b[i].length,
+      );
+      b[i] = [owner];
+    }
   return studyState(b, turn);
 };
 const a = (i, j, kind = 0, slot = 0) => [
@@ -103,12 +111,12 @@ test("ordered stack exceptions and partial outcomes preserve the origin slot", (
   assert.deepEqual(out.state.board[28], [-1]);
   validateState(out.state);
 });
-test("Cavalry paths cannot jump friendly or enemy blockers", () => {
+test("Cavalry passes single allies but cannot jump enemies or full formations", () => {
   const s = setup([
     [36, [2]],
     [27, [-1]],
-    [28, [1]],
-    [29, [1]],
+    [28, [1, 1]],
+    [29, [1, 1]],
   ]);
   assert(!has(s, a(36, 20)));
   assert(has(s, a(36, 27, 1)));
@@ -131,7 +139,8 @@ test("ranged rays stop at a friendly unit; power shot retains stack order", () =
   const shot = transition(s, a(36, 20, 2, 1));
   assert.deepEqual(shot.state.board[36], [3, 3]);
   assert.deepEqual(shot.state.board[20], [-6]);
-  assert.equal(shot.state.winner, null);
+  assert.equal(shot.state.winner, 1);
+  assert.equal(shot.state.reason, "lone_commander");
   assert(!has(shot.state, a(36, 20, 2)));
 });
 test("conversion is solitary and changes direction without moving the Priestess", () => {
@@ -242,7 +251,7 @@ test("saved records reconstruct the board and repetition counts, rejecting tampe
     readRecord(JSON.stringify({ ...record, moves: [[0, 0, 0, 7, 7, 1]] })),
   );
 });
-test("all seven guided lessons have a legal intended action and correct final victory", () => {
+test("all twelve guided lessons have a legal intended action and correct final victory", () => {
   for (const lesson of LESSONS)
     assert(has(lesson.state(), lesson.action), lesson.title);
   assert.equal(

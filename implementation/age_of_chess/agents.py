@@ -16,8 +16,9 @@ def score_action(engine, action):
     src, dst = engine.state.board.grid[fr][fc], engine.state.board.grid[tr][tc]
     actor = (src.top, src.bottom)[slot]
     if kind == 3: return 2*values[dst.top.code].value
-    if kind == 2: return values[dst.top.code].value
-    alive, top, bottom = resolve_melee(actor, dst.top, dst.bottom, engine.rules)
+    if kind == 2: return values[dst.top.code].value - (values[actor.code].value if dst.top.code == "B" else 0)
+    alive, top, bottom = resolve_melee(actor, dst.top, dst.bottom, engine.rules,
+                                      from_pos=(fr, fc), to_pos=(tr, tc))
     return ((0 if top else values[dst.top.code].value)
             + (values[dst.bottom.code].value if dst.bottom and not bottom else 0)
             - (0 if alive else values[actor.code].value))
