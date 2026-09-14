@@ -23,6 +23,9 @@ files; neither npm dependencies nor the research implementation are deployed.
 
 - Solo play as either side against Squire, Knight or Marshal, and two players on
   one device. Both banners use identical rules. This release has no online multiplayer.
+- **Watch a battle:** AI-versus-AI spectator mode, with an independent AI level
+  for each army, Pause/Resume, Next order and three playback paces. The existing
+  soundtrack and cinematic battles accompany the match.
 - Seven interactive lessons, all six unit descriptions and a full combat table.
 - Original illustrated unit figures, landscape, heraldry, stone board, medieval
   typography, and a responsive layout with touch and keyboard controls.
@@ -39,6 +42,29 @@ files; neither npm dependencies nor the research implementation are deployed.
   per-move local undo, resignation, terminal results and step-through battle review.
 - Worker-based, time-bounded AI search with cancellation and a local fallback.
   Marshal is a deeper heuristic search, not a trained or expert-strength model.
+
+## Watch an AI battle
+
+In the war camp, choose **Watch a battle**, select each commander's level, then
+**Watch battle**. North moves first and the armies alternate automatically until
+the normal victory or draw conditions. All decisions still run locally.
+
+- **Pause / Resume** stops or restarts automatic orders. A pending search is
+  canceled immediately. An order already animating finishes once before pausing;
+  the cinematic dialog also provides **Pause after this order**.
+- **Next order** plays exactly one AI turn while paused. Both AIs retain their
+  selected levels, and their move still receives its usual animation.
+- **Pace** adds a 0.25 s (Brisk), 1.2 s (Steady), or 2.5 s (Leisurely) interval
+  before the next search. Animation and search time are additional. Settings
+  offers quick encounters or reduced motion for faster viewing.
+- Pause to inspect either army or enter battle review. Spectators cannot issue
+  manual moves, request hints, undo turns or resign for an AI.
+- Save/Load and autosave preserve the entire game and both AI levels. Restored
+  spectator games and returning from review stay paused until **Resume**.
+  Switching to a hidden tab also pauses the battle.
+
+Existing solo and local save files remain compatible. There is no new game rule,
+turn cap, material adjudication, online service, or automatic rematch.
 
 ## GitHub Pages
 
@@ -80,7 +106,10 @@ and all ordered melee pairs with stack variants from Python; it compares every
 legal action, board transition, casualty, turn and terminal outcome. The browser
 suite tests the actual `/age_of_chess/` path, mobile and desktop input, tutorial
 combat, saved records, both AI orientations, hints, undo, review, audio output,
-fonts, and missing/external asset requests. Screenshots go to `web/test-results/`
+fonts, and missing/external asset requests. Spectator checks cover both AI levels,
+continuous play, pending-worker cancellation, single stepping, pace, menus,
+save/load, review, cinematic pausing, terminal games and mobile viewing.
+Screenshots go to `web/test-results/`
 and are attached to GitHub Actions runs as the `browser-review` artifact.
 
 Portable saves store actions and replay them through validated rules, including

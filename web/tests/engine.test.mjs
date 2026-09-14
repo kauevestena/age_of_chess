@@ -30,6 +30,55 @@ const a = (i, j, kind = 0, slot = 0) => [
 ];
 const has = (s, m) => legalActions(s).some((x) => x.join() === m.join());
 
+test("spectator saves preserve independent AI levels and full move history", () => {
+  const actions = [],
+    config = {
+      mode: "watch",
+      difficulty: "knight",
+      humanSide: 1,
+      northDifficulty: "squire",
+      southDifficulty: "marshal",
+    };
+  let state = initialState();
+  for (let i = 0; i < 8; i++) {
+    const action = legalActions(state)[0];
+    actions.push(action);
+    state = transition(state, action).state;
+  }
+  const loaded = readRecord(JSON.stringify(createRecord(actions, config)));
+  assert.deepEqual(loaded.record.config, config);
+  assert.deepEqual(loaded.state, state);
+  assert.equal(loaded.events.length, actions.length);
+});
+
+test("spectator imports reject invalid commanders and human resignation", () => {
+  const config = {
+    mode: "watch",
+    difficulty: "knight",
+    humanSide: 1,
+    northDifficulty: "squire",
+    southDifficulty: "marshal",
+  };
+  for (const change of [
+    { northDifficulty: undefined },
+    { southDifficulty: "expert" },
+  ])
+    assert.throws(() =>
+      readRecord(JSON.stringify(createRecord([], { ...config, ...change }))),
+    );
+  assert.throws(() => readRecord(JSON.stringify(createRecord([], config, 1))));
+  // Existing solo and local records remain valid without either new field.
+  for (const mode of ["solo", "local"])
+    assert.equal(
+      readRecord(
+        JSON.stringify(
+          createRecord([], { mode, difficulty: "knight", humanSide: 1 }),
+        ),
+      ).record.config.mode,
+      mode,
+    );
+});
+
 test("Pikemen beat Archers in either melee direction; arrows beat Pikemen", () => {
   assert.deepEqual(melee(1, -3), [true, false, false]);
   assert.deepEqual(melee(3, -1), [false, true, false]);

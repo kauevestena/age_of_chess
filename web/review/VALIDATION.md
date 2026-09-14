@@ -50,6 +50,39 @@ check used a Chromium binary obtained from the npm distribution
 This is a local test dependency only and is not shipped in the game or added to
 the project dependency graph. CI installs Playwright's matching Chromium.
 
+## AI spectator mode follow-up
+
+Validated on 2026-09-14 against merged browser-game commit
+`c585fe5fa47cc679f0aa639ad201328361748133`.
+
+| Check | Result |
+|---|---|
+| Engine and save regressions | 16 tests passed, including two new spectator-save tests |
+| Browser gameplay and integration | 72 assertions passed, including 30 new spectator assertions |
+| Browser exceptions / missing assets / external asset requests | 0 / 0 / 0 |
+| Spectator presentation | Desktop setup, battlefield and cinematic reviewed; 360 px touch controls passed without horizontal overflow |
+| Original score | All three pieces still rendered non-silent audio below clipping |
+
+The spectator suite drives actual AI workers for both armies with independently
+selected levels. It verifies continuous alternating play, cancellation of pending
+searches, pause/resume, one-order stepping (including rapid repeated clicks),
+pace changes, menus, hidden-tab pausing, and leaving the battle. Human orders,
+hints, undo and resignation are unavailable in this mode. Local mode restores
+its normal controls after leaving a spectator battle.
+
+Autosave reload and portable save import retain both AI levels and restore the
+same board with playback paused. Chronicle review also returns paused. A seeded
+legal game supplies real encounter and terminal-game fixtures: pausing during a
+cinematic and skipping it commits exactly one order, while a completed game
+announces its result and disables further playback. Existing solo and local saves
+remain accepted; malformed spectator levels and spectator resignations are rejected.
+
+The engine, combat rules, AI evaluation and assets are unchanged. This follow-up
+does not add new balance claims or a turn cap; the baseline parity results above
+remain the rules validation. The browser suite runs through the existing Pages
+project path and CI entry point. Its generated spectator screenshots and save
+fixture join the ignored `web/test-results/` review artifacts.
+
 ## Limits
 
 - This validation does not establish expert-level AI strength or new balance

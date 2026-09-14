@@ -11,9 +11,9 @@ combat table are validated; unsupported settings fail instead of being ignored.
 ## Browser game
 
 The [medieval browser client](web/README.md) provides solo play against three AI
-levels, local two-player battles, a guided tutorial, original illustrated units,
-animated combat, an original soundtrack, save/load and battle review. Gameplay
-runs entirely in the browser and is packaged for GitHub Pages.
+levels, local two-player battles, AI-versus-AI spectator battles, a guided tutorial,
+original illustrated units, animated combat, an original soundtrack, save/load and
+battle review. Gameplay runs entirely in the browser and is packaged for GitHub Pages.
 
 ```bash
 node web/scripts/serve.mjs
