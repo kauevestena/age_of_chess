@@ -11,7 +11,7 @@ from implementation.age_of_chess.sb3_env import AOCSingleAgentSelfPlayEnv
 from implementation.league.round_robin import run_league
 
 def mask_fn(env):
-    return env.get_action_mask()
+    return env.unwrapped.get_action_mask()
 
 class LeagueCallback(BaseCallback):
     def __init__(self, check_freq: int = 10000, save_dir: str = "models/checkpoints", verbose: int = 0):
@@ -43,7 +43,7 @@ def main():
     env = AOCSingleAgentSelfPlayEnv("rulesets/default.yaml")
     env = FlattenObservation(env)
     env = ActionMasker(env, mask_fn)
-    model = MaskablePPO("MlpPolicy", env, verbose=1, tensorboard_log="tb_logs/mppo_league")
+    model = MaskablePPO("MlpPolicy", env, verbose=1)
     cb = LeagueCallback(check_freq=5000)
     model.learn(total_timesteps=20000, callback=cb)
     model.save("models/mppo_league_final.zip")

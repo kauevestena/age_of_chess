@@ -6,7 +6,7 @@ from typing import Optional, Dict, List, Tuple, Any
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 from implementation.age_of_chess.utils import encode_action
 from implementation.age_of_chess.agents import GreedyAgent
-from .elo import compute_elo, rating_ci
+from .elo import compute_elo, rating_ci, score_for_north
 
 # Optional imports (skip if unavailable)
 try:
@@ -22,30 +22,38 @@ except Exception:  # pragma: no cover
 class Result:
     white: str
     black: str
-    winner: Optional[str]  # "north", "south", or None for draw
+    winner: Optional[str]  # north/south/draw; None means no result
     rewards: Dict[str,float]
     steps: int
+    terminated: bool
+    truncated: bool
+    reason: Optional[str]
 
 class Policy:
     name: str
+    def reset(self, seed): pass
+
     def select(self, env) -> Optional[int]:
         raise NotImplementedError
 
 class RandomPolicy(Policy):
     def __init__(self):
+        import random
         self.name = "Random"
+        self.rng = random.Random()
+    def reset(self, seed): self.rng.seed(seed)
     def select(self, env):
         mask = env.infos[env.agent_selection].get("action_mask")
-        legal = [i for i,m in enumerate(mask) if m==1] if mask else list(range(env.action_space(env.agent_selection).n))
+        legal = [i for i,m in enumerate(mask) if m==1] if mask is not None else []
         if not legal:
             return None
-        import random
-        return random.choice(legal)
+        return self.rng.choice(legal)
 
 class GreedyPolicyWrapper(Policy):
     def __init__(self):
         self.name = "Greedy"
         self._g = GreedyAgent()
+    def reset(self, seed): self._g.rng.seed(seed)
     def select(self, env):
         engine = env.unwrapped.engine
         act = self._g.select(engine)
@@ -61,9 +69,10 @@ def _build_matrix(names, results):
     W = np.zeros((n,n), dtype=float)
     C = np.zeros((n,n), dtype=int)
     for r in results:
+        if score_for_north(r) is None: continue
         i = idx[r["white"]]; j = idx[r["black"]]
         C[i,j] += 1
-        if r["winner"] is None:
+        if r["winner"] == "draw":
             W[i,j] += 0.5
         elif r["winner"] == "north":
             W[i,j] += 1.0
@@ -86,8 +95,8 @@ def _save_heatmap(names, results, out_path_png):
     for i in range(len(names)):
         for j in range(len(names)):
             if C[i,j] > 0:
-                ax.text(j, i, f"{M[i,j]:.2f}\\n({C[i,j]})", ha="center", va="center")
-    ax.set_title("Head-to-Head Winrate (white vs black)")
+                ax.text(j, i, f"{M[i,j]:.2f}\n({C[i,j]})", ha="center", va="center")
+    ax.set_title("North score rate (draw = ½; truncations excluded)")
     fig.tight_layout()
     fig.savefig(out_path_png)
     plt.close(fig)
@@ -100,6 +109,10 @@ class SB3Policy(Policy):
         self.model = None
         self.is_maskable = False
         self._load()
+        from implementation.age_of_chess.env import OBSERVATION_SHAPE
+        import numpy as np
+        if self.model.observation_space.shape not in (OBSERVATION_SHAPE, (int(np.prod(OBSERVATION_SHAPE)),)):
+            raise ValueError("Checkpoint uses incompatible observations; retrain for rules v2")
 
     def _load(self):
         # Try MaskablePPO first, then A2C
@@ -126,6 +139,8 @@ class SB3Policy(Policy):
         mask = info.get("action_mask")
         # SB3 expects batched obs
         import numpy as np
+        if len(self.model.observation_space.shape) == 1:
+            obs = obs.reshape(-1)
         bobs = np.expand_dims(obs, axis=0)
         if self.is_maskable:
             action, _ = self.model.predict(bobs, deterministic=True, action_masks=mask)
@@ -143,36 +158,27 @@ def discover_agents(models_dir: str = "models") -> List[Policy]:
         # Try to instantiate SB3Policy; if libs missing, skip gracefully
         try:
             agents.append(SB3Policy(p))
-        except Exception:
-            # Unavailable libs or bad file — skip
+        except Exception as exc:
+            print(f"Skipping incompatible model {p}: {exc}")
             continue
     return agents
 
-def play_game(white: Policy, black: Policy, ruleset: str, max_steps: int = 200) -> Result:
-    env = age_of_chess_v0(ruleset_path=ruleset)
-    env.reset()
-    steps = 0
-    while steps < max_steps:
-        agent = env.agent_selection
-        pol = white if agent == "north" else black
-        action = pol.select(env)
-        if action is None:
-            # no legal move: env will handle terminal on step with illegal fallback; choose a random illegal to trigger
-            action = 0
-        env.step(action)
-        steps += 1
-        if env.terminations["north"] and env.terminations["south"]:
-            break
-    # Determine winner by rewards sign or king capture was already encoded
-    rw = env.rewards
-    winner = None
-    if rw["north"] > rw["south"]:
-        winner = "north"
-    elif rw["south"] > rw["north"]:
-        winner = "south"
-    return Result(white=white.name, black=black.name, winner=winner, rewards=dict(rw), steps=steps)
+def play_game(white: Policy, black: Policy, ruleset: str, max_steps: int = 512,
+              seed: int = 0, swap_seeds: bool = False) -> Result:
+    env = age_of_chess_v0(ruleset_path=ruleset, max_plies=max_steps)
+    env.reset(seed=seed)
+    white.reset(2*seed+int(swap_seeds))
+    black.reset(2*seed+int(not swap_seeds))
+    engine = env.unwrapped.engine
+    while not engine.state.done:
+        pol = white if env.agent_selection == "north" else black
+        env.step(pol.select(env))
+    state = engine.state
+    return Result(white.name, black.name, state.winner, dict(env.rewards),
+                  state.move_count, state.terminated, state.truncated, state.reason)
 
-def run_league(ruleset: str = "rulesets/default.yaml", games_per_pair: int = 4, models_dir: str = "models", out_dir: str = "logs/league"):
+
+def run_league(ruleset: str = "rulesets/default.yaml", games_per_pair: int = 4, models_dir: str = "models", out_dir: str = "logs/league", seed: int = 0):
     os.makedirs(out_dir, exist_ok=True)
     agents = discover_agents(models_dir=models_dir)
     names = [a.name for a in agents]
@@ -188,17 +194,22 @@ def run_league(ruleset: str = "rulesets/default.yaml", games_per_pair: int = 4, 
                     white, black = a, b
                 else:
                     white, black = b, a
-                res = play_game(white, black, ruleset=ruleset)
+                res = play_game(white, black, ruleset=ruleset, seed=seed + k//2, swap_seeds=bool(k % 2))
                 rec = {
                     "white": res.white,
                     "black": res.black,
                     "winner": res.winner,
                     "rewards": res.rewards,
                     "steps": res.steps,
+                    "rules_version": 2,
+                    "terminated": res.terminated, "truncated": res.truncated,
+                    "reason": res.reason, "seed": seed+k//2,
                 }
                 results.append(rec)
                 # assign points
-                if res.winner is None:
+                if score_for_north(rec) is None:
+                    continue
+                if res.winner == "draw":
                     points[res.white] += 0.5
                     points[res.black] += 0.5
                 elif res.winner == "north":
@@ -228,9 +239,14 @@ def run_league(ruleset: str = "rulesets/default.yaml", games_per_pair: int = 4, 
     # write Markdown with Elo
     md_path = os.path.join(out_dir, f"standings_{ts}.md")
     with open(md_path, "w") as mf:
-        mf.write("| Agent | Points | Elo | 95% CI |\n|---|---:|---:|---:|\n")
+        excluded = sum(score_for_north(r) is None for r in results)
+        mf.write(f"Unresolved/truncated games excluded: {excluded} of {len(results)}.\n\n")
+        mf.write("| Agent | Points | Elo | Heuristic interval |\n|---|---:|---:|---:|\n")
         for name, pts in sorted(points.items(), key=lambda x: x[1], reverse=True):
-            er = elo.get(name, 1500.0); lo, hi = ci.get(name, (er, er))
+            if name not in elo:
+                mf.write(f"| {name} | {pts:.2f} | — | — |\n")
+                continue
+            er = elo[name]; lo, hi = ci[name]
             mf.write(f"| {name} | {pts:.2f} | {er:.1f} | [{lo:.0f}, {hi:.0f}] |\n")
 
     # save heatmap png
@@ -246,6 +262,7 @@ if __name__ == "__main__":
     p.add_argument("--ruleset", default="rulesets/default.yaml")
     p.add_argument("--games", type=int, default=4, help="Games per pairing (alternates colors)")
     p.add_argument("--models", default="models", help="Directory with SB3 model .zip files")
+    p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="logs/league")
     args = p.parse_args()
-    run_league(ruleset=args.ruleset, games_per_pair=args.games, models_dir=args.models, out_dir=args.out)
+    run_league(ruleset=args.ruleset, games_per_pair=args.games, models_dir=args.models, out_dir=args.out, seed=args.seed)

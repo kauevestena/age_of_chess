@@ -1,193 +1,203 @@
+"""Rules-v2 engine with atomic validation, ordered friendly stacks and adjudication."""
 from __future__ import annotations
-from typing import List, Tuple, Optional, Dict, Any
-import numpy as np
 import copy
-from .rules_loader import load_ruleset, Ruleset
+import numpy as np
+from .rules_loader import load_ruleset
 from .game_state import GameState, standard_setup
-from .movegen import gen_single_moves, Action
+from .movegen import gen_single_moves, ALL_DIRS
 from .combat import resolve_melee
-from .utils import action_mask_from_legal
+from .utils import action_mask_from_legal, opponent, in_bounds, encode_action
 
-VAL = {"P":1,"N":3,"B":3,"R":5,"Q":4,"K":1000}
+OBSERVATION_SHAPE = (27, 8, 8)
 
 class Engine:
-    def __init__(self, ruleset_path: str):
-        self.rules: Ruleset = load_ruleset(ruleset_path)
-        rows = self.rules.game.board["rows"]
-        cols = self.rules.game.board["cols"]
-        board = standard_setup(rows, cols)
-        self.state = GameState(board=board, to_move="north")
+    def __init__(self, ruleset_path="rulesets/default.yaml", *, rules=None):
+        self.rules = rules if rules is not None else load_ruleset(ruleset_path)
+        self.state = GameState(standard_setup())
+        self.state.position_counts[self.state.position_key()] = 1
 
-    # ---------- Helpers ----------
-    def _material(self) -> Dict[str,int]:
-        tot = {"north":0,"south":0}
-        for r in range(self.state.board.rows):
-            for c in range(self.state.board.cols):
-                sq = self.state.board.grid[r][c]
-                for u in [sq.top, sq.bottom]:
-                    if u:
-                        tot[u.side] += VAL.get(u.code,0)
-        return tot
+    def clone(self):
+        result = copy.copy(self)
+        result.state = self.state.copy()
+        return result
 
-    def _apply_on_copy(self, a: Action) -> "Engine":
-        e2 = copy.deepcopy(self)
-        e2.apply(a)
-        return e2
+    def set_state(self, state):
+        """Load a study position, reset repetition history and settle automatic effects."""
+        if (state.board.rows, state.board.cols) != (8, 8) or state.to_move not in ("north", "south"):
+            raise ValueError("Invalid study position")
+        state.board.validate()
+        self.state = state.copy()
+        self.state.terminated = self.state.truncated = False
+        self.state.winner = self.state.reason = None
+        self.state.position_counts = {}
+        self._priestess_deaths([])
+        self.state.position_counts[self.state.position_key()] = 1
+        self._adjudicate()
 
-    # ---------- Rules ----------
-    def legal_actions_unfiltered(self) -> List[Action]:
+    def _material(self):
+        values = {code: piece.value for code, piece in self.rules.game.pieces.items()}
+        totals = {"north": 0.0, "south": 0.0}
+        for row in self.state.board.grid:
+            for sq in row:
+                for u in (sq.top, sq.bottom):
+                    if u: totals[u.side] += values[u.code]
+        return totals
+
+    def legal_actions_unfiltered(self):
         return gen_single_moves(self.state, self.rules)
 
-    def legal_actions(self) -> List[Action]:
-        acts = self.legal_actions_unfiltered()
-        if not acts:
-            return acts
-        # Minimal-loss enforcement if enabled
-        ml = self.rules.game.turn.get("minimal_loss_rule", {}).get("enabled", False)
-        if not ml:
-            return acts
-        before = self._material()
-        side_now = self.state.to_move
-        scored = []
-        for a in acts:
-            try:
-                e2 = self._apply_on_copy(a)
-                after = e2._material()
-                own_loss = before[side_now] - after[side_now]
-                opp_loss = before["south" if side_now=="north" else "north"] - after["south" if side_now=="north" else "north"]
-                scored.append((own_loss, -opp_loss, a))
-            except Exception:
-                continue
-        if not scored:
-            return acts
-        min_own_loss = min(s[0] for s in scored)
-        if min_own_loss <= 0:
-            return [s[2] for s in scored]
-        best = [s for s in scored if s[0] == min_own_loss]
-        best.sort()
-        return [s[2] for s in best]
+    def immediate_own_deaths(self, action):
+        fr, fc, slot, tr, tc, kind = action
+        src, dst = self.state.board.grid[fr][fc], self.state.board.grid[tr][tc]
+        actor = (src.top, src.bottom)[slot]
+        if kind == 1:
+            alive, top, bottom = resolve_melee(actor, dst.top, dst.bottom, self.rules)
+            if not alive:
+                return [actor.code]
+            # A surviving Q can only advance if the defender square is cleared.
+            arrives = not top and not bottom
+        else:
+            arrives = kind == 0
+        if actor.code == "Q" and arrives:
+            for dr, dc in ALL_DIRS:
+                rr, cc = tr+dr, tc+dc
+                if in_bounds(rr, cc):
+                    sq = self.state.board.grid[rr][cc]
+                    if any(u and u.code == "Q" and u.side != actor.side for u in (sq.top, sq.bottom)):
+                        return ["Q"]
+        return []
 
-    def action_mask(self) -> List[int]:
+    def legal_actions(self):
+        actions = self.legal_actions_unfiltered()
+        if not actions or not self.rules.game.minimal_loss.enabled:
+            return actions
+        scores = []
+        order = self.rules.game.minimal_loss.preserve_order
+        for a in actions:
+            dead = self.immediate_own_deaths(a)
+            if not dead:
+                return actions
+            score = (dead.count("K"), len(dead), *(dead.count(code) for code in order))
+            scores.append((score, a))
+        best = min(score for score, _ in scores)
+        return [a for score, a in scores if score == best]
+
+    def action_mask(self):
         return action_mask_from_legal(self.legal_actions())
 
-    def kings_present(self) -> dict:
-        seen = {"north": False, "south": False}
-        for r in range(self.state.board.rows):
-            for c in range(self.state.board.cols):
-                sq = self.state.board.grid[r][c]
-                for u in [sq.top, sq.bottom]:
-                    if u and u.code == "K":
-                        seen[u.side] = True
-        return seen
+    def kings_present(self):
+        return {side: any(u and u.code == "K" and u.side == side
+                         for row in self.state.board.grid for sq in row
+                         for u in (sq.top, sq.bottom)) for side in ("north", "south")}
 
-    def observe(self, agent: str) -> np.ndarray:
-        """Return a channel-first binary tensor encoding board occupancy from the agent's perspective."""
-        rows = self.state.board.rows
-        cols = self.state.board.cols
-        obs = np.zeros((12, rows, cols), dtype=np.int8)
-        own = agent
-        opp = "south" if agent == "north" else "north"
-        code_to_idx = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5}
+    def winner_if_any(self):
+        return self.state.winner
 
-        for r in range(rows):
-            for c in range(cols):
-                sq = self.state.board.grid[r][c]
-                for unit in filter(None, (sq.top, sq.bottom)):
-                    channel_offset = 0 if unit.side == own else 6
-                    idx = channel_offset + code_to_idx.get(unit.code, 0)
-                    rr, cc = (rows - 1 - r, cols - 1 - c) if agent == "south" else (r, c)
-                    obs[idx, rr, cc] = 1
-
+    def observe(self, agent):
+        if agent not in ("north", "south"): raise ValueError("Unknown side")
+        obs = np.zeros(OBSERVATION_SHAPE, dtype=np.float32)
+        for r, row in enumerate(self.state.board.grid):
+            for c, sq in enumerate(row):
+                for slot, unit in enumerate((sq.top, sq.bottom)):
+                    if unit:
+                        channel = (0 if unit.side == agent else 12) + 6*slot + "PNBRQK".index(unit.code)
+                        obs[channel, r, c] = 1
+        # Absolute coordinates match action IDs. Side/direction and turn are explicit.
+        obs[24] = float(agent == "north")
+        obs[25] = float(agent == self.state.to_move)
+        count = self.state.position_counts.get(self.state.position_key(), 0)
+        obs[26] = min(count/self.rules.game.repetition_draw, 1.0)
         return obs
 
-    def winner_if_any(self) -> Optional[str]:
+    def _priestess_deaths(self, losses):
+        queens = [(r, c, slot, u) for r, row in enumerate(self.state.board.grid)
+                  for c, sq in enumerate(row) for slot, u in enumerate((sq.top, sq.bottom))
+                  if u and u.code == "Q"]
+        doomed = set()
+        for r, c, slot, q in queens:
+            if any(other.side != q.side and max(abs(r-rr), abs(c-cc)) == 1
+                   for rr, cc, _, other in queens):
+                doomed.add((r, c, slot))
+        for r, c, slot in sorted(doomed, reverse=True):
+            q = self.state.board.grid[r][c].remove_unit("bottom" if slot else "top")
+            losses.append({"code": q.code, "side": q.side, "cause": "priestess_adjacency"})
+
+    def _adjudicate(self):
         seen = self.kings_present()
-        if seen["north"] and not seen["south"]:
-            return "north"
-        if seen["south"] and not seen["north"]:
-            return "south"
-        if (not seen["north"]) and (not seen["south"]):
-            return "draw"
-        return None
+        if not all(seen.values()):
+            self.state.terminated = True
+            self.state.winner = next((side for side, present in seen.items() if present), "draw")
+            self.state.reason = "commander_capture" if any(seen.values()) else "both_commanders_absent"
+        elif not self.legal_actions_unfiltered():
+            self.forfeit(self.state.to_move, "stagnation")
+        elif self.state.position_counts.get(self.state.position_key(), 0) >= self.rules.game.repetition_draw:
+            self.state.terminated = True
+            self.state.winner, self.state.reason = "draw", "threefold_repetition"
 
-    def apply(self, action: Action) -> Dict[str, Any]:
-        """Apply action and return event info for reward shaping/logging."""
-        fr, fc, slot, tr, tc, atype = action
-        src = self.state.board.grid[fr][fc]
-        u = src.top if slot == 0 else src.bottom
-        if u is None or u.side != self.state.to_move:
-            raise ValueError("Illegal source unit")
-        moved_code = u.code
-        moved_side = u.side
-        # detect power-shot eligibility before removal
-        is_power_archer = False
-        if moved_code == "B":
-            if slot == 0 and src.bottom is not None and src.bottom.code == "B":
-                is_power_archer = True
-            if slot == 1 and src.top is not None and src.top.code == "B":
-                is_power_archer = True
+    def forfeit(self, side, reason="illegal_action"):
+        self.state.terminated = True
+        self.state.winner, self.state.reason = opponent(side), reason
 
-        # remove from source
-        moved = src.remove_unit("top" if slot == 0 else "bottom")
-        dst = self.state.board.grid[tr][tc]
+    def truncate(self, reason="ply_limit"):
+        if not self.state.terminated:
+            self.state.truncated, self.state.reason = True, reason
+            self.state.winner = None
 
-        event: Dict[str, Any] = {"atype": atype, "actor": moved_code, "from": (fr,fc), "to": (tr,tc), "slot": slot}
+    def apply(self, action):
+        """Reject malformed/illegal actions before changing any state."""
+        try:
+            action = tuple(action)
+            encode_action(*action)
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise ValueError("Malformed action") from exc
+        if action not in self.legal_actions():
+            raise ValueError("Illegal action")
+        return self._apply_unchecked(action)
 
-        if atype == 0:  # move/stack
-            if dst.top and dst.top.side == moved.side and dst.bottom is None:
-                dst.bottom = moved
-            else:
-                if dst.top is None:
-                    dst.top = moved
-                else:
-                    raise ValueError("Illegal move stacking")
+    def _apply_on_copy(self, action):
+        clone = self.clone()
+        clone.apply(action)
+        return clone
 
-        elif atype == 1:  # melee
-            if dst.top is None or dst.top.side == moved.side:
-                raise ValueError("Illegal capture")
-            def_top_code = dst.top.code
-            def_bottom_code = dst.bottom.code if dst.bottom else None
-            att_alive, top_alive, bottom_alive = resolve_melee(moved, dst.top, dst.bottom)
-            dst_top, dst_bottom = dst.top, dst.bottom
-            dst.top = dst_top if top_alive else None
-            dst.bottom = dst_bottom if bottom_alive else None
-            event["capture"] = {"def_top": def_top_code, "def_bottom": def_bottom_code, "att_alive": att_alive, "top_alive": top_alive, "bottom_alive": bottom_alive}
-            if att_alive:
-                if dst.top is None:
-                    dst.top = moved
-                elif dst.bottom is None:
-                    dst.bottom = moved
-
-        elif atype == 2:  # ranged
-            if dst.top is None or dst.top.side == moved.side:
-                raise ValueError("Illegal ranged")
-            killed_code = dst.top.code
-            dst.top = None
-            if dst.bottom is not None:
-                dst.top, dst.bottom = dst.bottom, None
-            # put archer back
-            if src.top is None:
-                src.top = moved
-            elif src.bottom is None:
-                src.bottom = moved
-            else:
-                raise RuntimeError("Source overfull after ranged")
-            event["ranged"] = {"killed": killed_code, "power_shot": bool(is_power_archer and killed_code in ("N","R"))}
-
-        elif atype == 3:  # convert
-            if dst.top is None or dst.bottom is not None or dst.top.side == moved.side:
-                raise ValueError("Illegal convert target")
-            converted_code = dst.top.code
-            dst.top.side = moved.side
-            if src.top is None:
-                src.top = moved
-            elif src.bottom is None:
-                src.bottom = moved
-            event["convert"] = {"converted": converted_code}
-        else:
-            raise ValueError("Unknown action type")
-
-        # swap side
-        self.state.to_move = "south" if self.state.to_move == "north" else "north"
+    def _apply_unchecked(self, action):
+        """Internal transition for previously generated actions (search and tests)."""
+        fr, fc, slot, tr, tc, kind = action
+        src, dst = self.state.board.grid[fr][fc], self.state.board.grid[tr][tc]
+        actor = (src.top, src.bottom)[slot]
+        side, code = actor.side, actor.code
+        event = {"atype": kind, "actor": code, "player": side,
+                 "from": (fr, fc), "to": (tr, tc), "slot": slot, "losses": []}
+        def remove(square, which, cause):
+            u = square.remove_unit(which)
+            event["losses"].append({"code": u.code, "side": u.side, "cause": cause})
+            return u
+        if kind == 0:
+            dst.add_unit(src.remove_unit("bottom" if slot else "top"))
+        elif kind == 1:
+            top_code, bottom_code = dst.top.code, dst.bottom.code if dst.bottom else None
+            alive, top_alive, bottom_alive = resolve_melee(actor, dst.top, dst.bottom, self.rules)
+            event["capture"] = {"def_top": top_code, "def_bottom": bottom_code,
+                                "att_alive": alive, "top_alive": top_alive, "bottom_alive": bottom_alive}
+            if dst.bottom and not bottom_alive: remove(dst, "bottom", "melee")
+            if not top_alive: remove(dst, "top", "melee")
+            if not alive:
+                remove(src, "bottom" if slot else "top", "melee")
+            elif dst.is_empty():
+                dst.add_unit(src.remove_unit("bottom" if slot else "top"))
+            # Otherwise attacker remains in the original slot; no mixed stack.
+        elif kind == 2:
+            killed = remove(dst, "top", "ranged")
+            normal_targets = {c for a in self.rules.game.pieces[code].abilities
+                              if a.name == "ranged" for c in a.targets}
+            event["ranged"] = {"killed": killed.code, "power_shot": killed.code not in normal_targets}
+        elif kind == 3:
+            event["convert"] = {"converted": dst.top.code, "previous_side": dst.top.side}
+            dst.top.side = side
+        self._priestess_deaths(event["losses"])
+        self.state.to_move = opponent(side)
         self.state.move_count += 1
+        key = self.state.position_key()
+        self.state.position_counts[key] = self.state.position_counts.get(key, 0)+1
+        self._adjudicate()
+        event["winner"], event["reason"] = self.state.winner, self.state.reason
         return event

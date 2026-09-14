@@ -70,7 +70,7 @@ def main(jsonl_path):
                         slot = ev.get("slot", 0)
                         atype = ev["atype"]
                         from implementation.age_of_chess.utils import encode_action
-                        aidx = encode_action(fr,fc,slot,atype,tr,tc)
+                        aidx = encode_action(fr,fc,slot,tr,tc,atype)
                         env.step(aidx)
                         idx += 1
                 if event.key == pygame.K_LEFT:
@@ -82,7 +82,7 @@ def main(jsonl_path):
                             ev = events[j]
                             fr,fc = ev["from"]; tr,tc = ev["to"]
                             slot = ev.get("slot", 0); atype = ev["atype"]
-                            aidx = encode_action(fr,fc,slot,atype,tr,tc)
+                            aidx = encode_action(fr,fc,slot,tr,tc,atype)
                             env.step(aidx)
 
         draw_board(screen, env)

@@ -21,8 +21,9 @@ def main():
                 action = env.action_space(agent).sample()
             env.step(action)
             steps += 1
-            if env.terminations["north"] and env.terminations["south"]:
-                print(f"Episode {ep+1} finished in {steps} steps. Rewards:", env.rewards)
+            if env.unwrapped.engine.state.done:
+                state = env.unwrapped.engine.state
+                print(f"Episode {ep+1}: {steps} plies, winner={state.winner}, reason={state.reason}")
                 break
 
 if __name__ == "__main__":

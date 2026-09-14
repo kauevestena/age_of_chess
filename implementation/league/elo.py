@@ -4,6 +4,16 @@ from typing import Dict, List, Tuple, Optional
 import math
 from collections import defaultdict
 
+def score_for_north(result):
+    """Only explicitly adjudicated v2 records contribute to scores/Elo."""
+    if result.get("rules_version") != 2 or result.get("truncated") or not result.get("terminated"):
+        return None
+    winner = result.get("winner")
+    if winner == "draw": return 0.5
+    if winner == "north": return 1.0
+    if winner == "south": return 0.0
+    return None
+
 def _expected(pA: float, pB: float) -> float:
     return 1.0 / (1.0 + 10 ** ((pB - pA) / 400.0))
 
@@ -13,6 +23,8 @@ def compute_elo(results: List[dict], k: float = 20.0, iters: int = 3) -> Dict[st
     Results entries: {white, black, winner, rewards, steps}
     Treat draw as 0.5. Initialize 1500 and iterate a few passes to reduce order effects.
     """
+    results = [r for r in results if score_for_north(r) is not None]
+    if not results: return {}
     players = set()
     for r in results:
         players.add(r["white"]); players.add(r["black"])
@@ -22,7 +34,7 @@ def compute_elo(results: List[dict], k: float = 20.0, iters: int = 3) -> Dict[st
     games = []
     for r in results:
         A = r["white"]; B = r["black"]
-        if r["winner"] is None:
+        if r["winner"] == "draw":
             sA = 0.5
         elif r["winner"] == "north":
             sA = 1.0  # white won
@@ -57,13 +69,14 @@ def rating_ci(results: List[dict], ratings: Dict[str,float]) -> Dict[str, Tuple[
     to rating delta vs avg field using logistic mapping: RD = 400 * log10(p/(1-p))
     Then add delta to field-average rating (which is 1500 after centering).
     """
+    results = [r for r in results if score_for_north(r) is not None]
     # gather scores
     total = defaultdict(int)
     points = defaultdict(float)
     for r in results:
         A = r["white"]; B = r["black"]
         total[A] += 1; total[B] += 1
-        if r["winner"] is None:
+        if r["winner"] == "draw":
             points[A] += 0.5; points[B] += 0.5
         elif r["winner"] == "north":
             points[A] += 1.0
