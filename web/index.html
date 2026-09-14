@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#172321" />
+    <meta
+      name="description"
+      content="A medieval game of tactical warfare. Lead six unit classes, build formations, and capture the enemy Commander. Play solo or with a friend."
+    />
+    <title>Age of Chess — Warfare</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./assets/fonts.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to game</a>
+    <header class="site-header">
+      <button class="brand" id="home" aria-label="Age of Chess home">
+        <span data-crest="1"></span
+        ><span>AGE OF CHESS<small>W A R F A R E</small></span>
+      </button>
+      <nav aria-label="Main navigation">
+        <button id="guide-button">
+          <span data-icon="book"></span><span>Field guide</span></button
+        ><button id="sound-button" aria-label="Enable soundtrack">
+          <span data-icon="music"></span
+          ><span id="sound-label">Enable sound</span></button
+        ><button id="settings-button" class="icon-button" aria-label="Settings">
+          <span data-icon="settings"></span>
+        </button>
+      </nav>
+    </header>
+    <main id="main" tabindex="-1">
+      <section id="lobby" class="lobby" aria-label="War camp">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span>A new age of strategy<span></span></p>
+          <h1>Age of Chess</h1>
+          <div class="warfare">WARFARE</div>
+          <p class="hero-tagline">Six orders. Sixty-four squares. One crown.</p>
+        </div>
+        <div class="camp-layout">
+          <section class="war-table ornate">
+            <p class="eyebrow">The war council</p>
+            <h2>Choose your battle</h2>
+            <fieldset>
+              <legend>Battle mode</legend>
+              <div class="segmented">
+                <label
+                  ><input type="radio" name="mode" value="solo" checked /><span
+                    >Against the realm<small>Solo vs computer</small></span
+                  ></label
+                ><label
+                  ><input type="radio" name="mode" value="local" /><span
+                    >A friendly rivalry<small
+                      >Two players · one device</small
+                    ></span
+                  ></label
+                >
+              </div>
+            </fieldset>
+            <fieldset id="difficulty-field">
+              <legend>Opponent</legend>
+              <div class="segmented difficulty">
+                <label
+                  ><input type="radio" name="difficulty" value="squire" /><span
+                    >Squire</span
+                  ></label
+                ><label
+                  ><input
+                    type="radio"
+                    name="difficulty"
+                    value="knight"
+                    checked
+                  /><span>Knight</span></label
+                ><label
+                  ><input type="radio" name="difficulty" value="marshal" /><span
+                    >Marshal</span
+                  ></label
+                >
+              </div>
+              <p id="difficulty-description" class="field-note">
+                A measured tactician who considers your reply.
+              </p>
+            </fieldset>
+            <fieldset id="allegiance-field">
+              <legend>Your banner</legend>
+              <div class="segmented allegiance">
+                <label
+                  ><input type="radio" name="side" value="1" checked /><span
+                    ><i class="swatch north"></i>The Azure Host<small
+                      >North · first move</small
+                    ></span
+                  ></label
+                ><label
+                  ><input type="radio" name="side" value="-1" /><span
+                    ><i class="swatch south"></i>The Ember Host<small
+                      >South · second move</small
+                    ></span
+                  ></label
+                >
+              </div>
+            </fieldset>
+            <button id="begin" class="primary wide">
+              <span data-icon="sword"></span>Begin battle<span
+                data-icon="arrow"
+              ></span>
+            </button>
+            <button id="continue" class="secondary wide" hidden>
+              Continue your battle
+            </button>
+            <div class="camp-secondary">
+              <button id="tutorial-button">Learn to command</button
+              ><button id="import-button">Load a game</button>
+            </div>
+          </section>
+          <div class="army-showcase" aria-hidden="true">
+            <div class="army-crest" data-crest="1"></div>
+            <div id="hero-army"></div>
+            <div class="showcase-caption">
+              <span class="ornament">✦</span>
+              <p>
+                Steel holds the line.<br /><em>Strategy wins the crown.</em>
+              </p>
+              <span class="ornament">✦</span>
+            </div>
+          </div>
+        </div>
+        <div class="lobby-foot">
+          <span
+            >Capture the Commander · Command formations · Master the
+            counters</span
+          ><span>Original art & music</span>
+        </div>
+      </section>
+      <section id="game" class="game-shell" hidden aria-label="Battlefield">
+        <div class="battle-heading">
+          <div>
+            <p class="eyebrow" id="battle-mode">Solo skirmish</p>
+            <h1>The battlefield</h1>
+          </div>
+          <div class="turn-seal">
+            <span id="turn-crest"></span>
+            <div>
+              <strong id="turn-name">The Azure Host</strong
+              ><span id="turn-status" role="status" aria-live="polite"
+                >Your turn</span
+              >
+            </div>
+            <span id="turn-number">01</span>
+          </div>
+        </div>
+        <div class="game-layout">
+          <aside class="left-command">
+            <section class="panel army-panel">
+              <p class="eyebrow">The opposing army</p>
+              <div class="commander-label">
+                <span id="enemy-crest"></span>
+                <div>
+                  <h2 id="enemy-name">Ember Host</h2>
+                  <small id="opponent-level">Knight</small>
+                </div>
+              </div>
+              <div id="enemy-roster" class="roster"></div>
+            </section>
+            <section class="panel unit-panel" id="unit-panel">
+              <p class="eyebrow">Unit orders</p>
+              <div id="selected-art"></div>
+              <h2 id="selected-name">Awaiting your orders</h2>
+              <p id="selected-description">
+                Select a unit to see its movement and abilities.
+              </p>
+              <div id="slot-controls" hidden></div>
+              <div id="unit-facts"></div>
+            </section>
+            <button id="hint-button" class="secondary wide">
+              <span data-icon="spark"></span>Ask the war council
+            </button>
+          </aside>
+          <div class="battlefield">
+            <div class="board-frame ornate">
+              <div
+                id="rank-labels"
+                class="rank-labels"
+                aria-hidden="true"
+              ></div>
+              <div
+                id="board"
+                class="board"
+                role="group"
+                aria-label="8 by 8 battlefield. Use arrow keys to navigate and Enter to select."
+              ></div>
+              <div
+                id="file-labels"
+                class="file-labels"
+                aria-hidden="true"
+              ></div>
+              <canvas id="board-effects" aria-hidden="true"></canvas>
+            </div>
+            <div class="board-legend">
+              <span><i class="move-dot"></i>Advance / stack</span
+              ><span><i class="attack-dot"></i>Melee</span
+              ><span><i class="range-dot"></i>Ranged</span
+              ><span><i class="faith-dot"></i>Convert</span>
+            </div>
+            <div class="board-toolbar">
+              <div>
+                <button id="undo-button" title="Undo your last turn">
+                  <span data-icon="undo"></span><span>Undo</span></button
+                ><button id="flip-button" title="Flip board (F)">
+                  <span data-icon="flip"></span><span>Flip</span>
+                </button>
+              </div>
+              <span id="save-status">Game saved on this device</span>
+              <div>
+                <button id="export-button" title="Download game">
+                  <span data-icon="download"></span><span>Save</span></button
+                ><button id="menu-button">
+                  <span data-icon="flag"></span><span>Menu</span>
+                </button>
+              </div>
+            </div>
+            <div id="tutorial-panel" class="tutorial-panel panel" hidden></div>
+            <div id="replay-panel" class="panel replay-panel" hidden>
+              <span>Reviewing the battle</span
+              ><button id="replay-prev" aria-label="Previous move">←</button
+              ><span id="replay-position"></span
+              ><button id="replay-next" aria-label="Next move">→</button
+              ><button id="replay-exit">Return to live game</button>
+            </div>
+          </div>
+          <aside class="right-command">
+            <section class="panel objective">
+              <p class="eyebrow">Your objective</p>
+              <span data-icon="crown"></span>
+              <h2>Claim the crown</h2>
+              <p>
+                Capture the enemy Commander.<br />Every decision shapes the
+                battle.
+              </p>
+            </section>
+            <section class="panel chronicle">
+              <div class="panel-heading">
+                <p class="eyebrow">Battle chronicle</p>
+                <button id="review-button">Review</button>
+              </div>
+              <ol id="move-log" aria-label="Move history"></ol>
+              <p id="empty-log" class="muted">
+                The field is quiet.<br />Your story begins with the first move.
+              </p>
+            </section>
+            <section class="panel army-panel">
+              <p class="eyebrow">Your army</p>
+              <div class="commander-label">
+                <span id="player-crest"></span>
+                <div>
+                  <h2 id="player-name">Azure Host</h2>
+                  <small id="player-role">You · North</small>
+                </div>
+              </div>
+              <div id="player-roster" class="roster"></div>
+            </section>
+          </aside>
+        </div>
+        <p class="keyboard-tip">
+          Arrow keys to navigate · Enter to select · Escape to cancel · F to
+          flip · U to undo
+        </p>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span>AGE OF CHESS <b>✦</b> WARFARE</span
+      ><button id="credits-button">Art & music credits</button
+      ><span class="now-playing"
+        ><span data-icon="music"></span
+        ><span id="track-name">The realm awaits</span></span
+      >
+    </footer>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <dialog id="modal" aria-labelledby="modal-title">
+      <button
+        class="dialog-close icon-button"
+        id="modal-close"
+        aria-label="Close dialog"
+      >
+        <span data-icon="close"></span>
+      </button>
+      <div id="modal-content"></div>
+    </dialog>
+    <dialog
+      id="battle-dialog"
+      class="battle-dialog"
+      aria-labelledby="encounter-title"
+    >
+      <div class="cinema-top">
+        <div>
+          <p class="eyebrow">An encounter on the field</p>
+          <h2 id="encounter-title"></h2>
+        </div>
+        <button id="skip-battle">Skip animation <span>Esc</span></button>
+      </div>
+      <div id="encounter-stage" class="encounter-stage">
+        <canvas id="encounter-effects" aria-hidden="true"></canvas>
+      </div>
+      <div class="cinema-bottom">
+        <span id="encounter-phase">The lines meet</span>
+        <p id="encounter-outcome"></p>
+      </div>
+    </dialog>
+    <input id="file-input" type="file" accept=".json,application/json" hidden />
+    <noscript
+      ><div class="noscript">
+        Enable JavaScript to play Age of Chess. All gameplay runs in your
+        browser.
+      </div></noscript
+    >
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>
