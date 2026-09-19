@@ -43,7 +43,7 @@ export const LESSONS = [
       ]),
     action: [4, 4, 0, 3, 4, 2],
     success:
-      "Shots reach one or two squares along any clear straight or diagonal ray. Shooting an Archer causes return fire: both Archers die.",
+      "Shots reach one square along any clear straight or diagonal ray. Shooting an Archer causes return fire: both Archers die.",
   },
   {
     title: "Form a company",
@@ -59,15 +59,15 @@ export const LESSONS = [
   },
   {
     title: "A powerful volley",
-    text: "Two Archers occupy e4. Select B in the unit panel, then shoot the Heavy Infantry on e6. A double Archer formation can pierce heavy armor.",
+    text: "Two Archers occupy e4. Select B in the unit panel, then shoot the Heavy Infantry on e5. A double Archer formation can pierce heavy armor.",
     state: () =>
       position([
         [36, [3, 3]],
-        [20, [-4]],
+        [28, [-4]],
       ]),
-    action: [4, 4, 1, 2, 4, 2],
+    action: [4, 4, 1, 3, 4, 2],
     success:
-      "Power shots can kill Cavalry and Heavy Infantry, but never a Commander. A shot removes one exposed defender; you may choose when both are exposed.",
+      "Power shots can kill Cavalry and Heavy Infantry, but never a King. A shot removes one exposed defender; you may choose when both are exposed.",
   },
   {
     title: "Win an allegiance",
@@ -79,7 +79,7 @@ export const LESSONS = [
       ]),
     action: [4, 4, 0, 4, 3, 3],
     success:
-      "Priestesses cannot convert stacks, Commanders, or other Priestesses. Adjacent opposing Priestesses both die automatically.",
+      "Priestesses cannot convert stacks, Kings, or other Priestesses. Adjacent opposing Priestesses both die automatically.",
   },
   {
     title: "A guarded front",
@@ -129,19 +129,19 @@ export const LESSONS = [
       ]),
     action: [6, 6, 1, 4, 4, 0],
     success:
-      "The intermediate ally and your source companion stayed in place. A full formation or enemy would block passage. Two-step quiet moves still use two forward steps.",
+      "The intermediate ally and your source companion stayed in place. A full formation or enemy would block passage. Veteran Cavalry can also take two backward steps after reaching the enemy back rank.",
   },
   {
     title: "An answering arrow",
-    text: "Select Archer B on e4 and shoot the Archer on e6. The defending Archer returns fire from any direction: both Archers will fall.",
+    text: "Select Archer B on e4 and shoot the Archer on e5. The defending Archer returns fire from any direction: both Archers will fall.",
     state: () =>
       position([
         [36, [1, 3]],
-        [20, [-3, -1]],
+        [28, [-3, -1]],
       ]),
-    action: [4, 4, 1, 2, 4, 2],
+    action: [4, 4, 1, 3, 4, 2],
     success:
-      "Both actual Archers died; both Pikeman companions survived. Ranged return fire ignores melee stance. Keep supporting units alive: a lone Commander loses, and its third consecutive retreat forfeits.",
+      "Both actual Archers died; both Pikeman companions survived. Ranged return fire ignores melee stance. Keep supporting units alive: a lone King loses, and its third consecutive retreat forfeits.",
   },
   {
     title: "Arrange the company",
@@ -158,11 +158,39 @@ export const LESSONS = [
     success: "The Pikeman survives and the Cavalry falls. Class counters always come before facing or formation benefits.",
   },
   {
+    title: "Return from the far rank",
+    text: "Your Pikeman on e8 has reached the enemy back rank. Move diagonally backward to f7. The backward ability remains for the rest of its life.",
+    state: () => position([[4, [1]]]),
+    action: [0, 4, 0, 1, 5, 0],
+    success: "The ↶ veteran mark follows this unit. It can still move backward after leaving the far rank, joining formations, or changing allegiance. Kings never gain this ability.",
+  },
+  {
+    title: "The royal escort holds",
+    text: "The enemy Pikeman on e5 accompanies its King. Attack diagonally from d4: the King's support turns this matching front-diagonal attack into a defender victory.",
+    state: () => position([[35, [1]], [28, [-1, -6]]], 28),
+    action: [4, 3, 0, 3, 4, 1],
+    success: "Your Pikeman fell; both defenders survived. Any arrangement grants the buff, but Heavy Infantry would still defeat the Pikeman and then capture the King.",
+  },
+  {
+    title: "A life for the crown",
+    text: "Attack the Pikeman–King formation on d4 from e4. From the flank, matching Pikemen cancel each other; the King is spared by its escort.",
+    state: () => position([[36, [1]], [35, [-1, -6]]], 35),
+    action: [4, 4, 0, 4, 3, 1],
+    success: "Only the two Pikemen fell. The King survives this exchange. Rear attacks keep the original formation geometry; class counters still come first.",
+  },
+  {
+    title: "The fourth royal order",
+    text: "Your King on h1 has already moved on three consecutive army turns. Move it to g2 to see the forfeit. In a real battle, order another unit instead to reset both counters.",
+    state: () => { const s = position([]); return studyState(s.board, 1, [0, 0], s.layout, [], s.veteran, [3, 0]); },
+    action: [7, 7, 0, 6, 6, 0],
+    success: "The fourth King movement forfeits, even without retreating. The separate third-backward-movement rule also remains. Preparations never reset either counter.",
+  },
+  {
     title: "Claim the crown",
-    text: "The enemy Commander is exposed on e5. Send your Pikeman from e4 to capture it. There is no check or checkmate: the capture itself wins.",
+    text: "The enemy King is exposed on e5. Send your Pikeman from e4 to capture it. There is no check or checkmate: the capture itself wins.",
     state: () => position([[36, [1]]], 28),
     action: [4, 4, 0, 3, 4, 1],
     success:
-      "You are ready to command. Protect your Commander, exploit the counters, and let the field guide answer the finer points.",
+      "You are ready to command. Protect your King, exploit the counters, and let the field guide answer the finer points.",
   },
 ];

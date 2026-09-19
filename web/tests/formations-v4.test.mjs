@@ -78,18 +78,18 @@ test("three distinct rearrangements precede one normal order without altering re
 });
 
 test("ranged fire chooses the exposed A or B, screens block, and return fire removes the actual members", () => {
-  let s = setup([[43,[-3]],[27,[4,3]]],-1);
-  assert(has(s,action(43,27,8))); assert(!has(s,action(43,27,2)));
-  let out = transition(s,action(43,27,8));
+  let s = setup([[35,[-3]],[27,[4,3]]],-1);
+  assert(has(s,action(35,27,8))); assert(!has(s,action(35,27,2)));
+  let out = transition(s,action(35,27,8));
   assert.equal(out.event.targetSlot,1);
-  assert.deepEqual(out.state.board[27],[4]); assert.deepEqual(out.state.board[43],[]);
+  assert.deepEqual(out.state.board[27],[4]); assert.deepEqual(out.state.board[35],[]);
   assert.equal(out.state.layout[27],-1);
-  s = setup([[11,[-3]],[27,[4,3]]],-1);
-  assert(!has(s,action(11,27,2))); assert(!has(s,action(11,27,8)));
-  s = setup([[25,[-3]],[27,[1,3]]],-1);
-  assert(has(s,action(25,27,2))); assert(has(s,action(25,27,8)));
-  out = transition(s,action(25,27,2));
-  assert.deepEqual(out.state.board[27],[3]); assert.deepEqual(out.state.board[25],[-3]);
+  s = setup([[19,[-3]],[27,[4,3]]],-1);
+  assert(!has(s,action(19,27,2))); assert(!has(s,action(19,27,8)));
+  s = setup([[26,[-3]],[27,[1,3]]],-1);
+  assert(has(s,action(26,27,2))); assert(has(s,action(26,27,8)));
+  out = transition(s,action(26,27,2));
+  assert.deepEqual(out.state.board[27],[3]); assert.deepEqual(out.state.board[26],[-3]);
 });
 
 test("a physically exposed Commander loses before a reserve can engage", () => {

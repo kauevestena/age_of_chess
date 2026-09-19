@@ -57,13 +57,17 @@ def gen_single_moves(state, rules):
                         if melee_allowed(unit, target, rules, (r, c), (rr, cc)):
                             actions.add((r, c, slot, rr, cc, 1))
 
-                for dr, dc in dirs:
-                    rr, cc = r+dr, c+dc
-                    if not in_bounds(rr, cc, rows, cols): continue
-                    destination(rr, cc)
-                    if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
-                        for dr2, dc2 in dirs:
-                            destination(rr+dr2, cc+dc2)
+                # Veterans retain their class's reach in the backward direction.
+                # A two-step quiet Cavalry move uses two forward OR two backward steps.
+                directions = [dirs] + ([[( -dr, dc) for dr, dc in dirs]] if unit.veteran else [])
+                for group in directions:
+                    for dr, dc in group:
+                        rr, cc = r+dr, c+dc
+                        if not in_bounds(rr, cc, rows, cols): continue
+                        destination(rr, cc)
+                        if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
+                            for dr2, dc2 in group:
+                                destination(rr+dr2, cc+dc2)
                 extra = []
                 if movement.last_rank_all_directions and is_last_rank(side, r, rows):
                     extra = ALL_DIRS

@@ -100,18 +100,18 @@ def test_preparations_cannot_bypass_mandatory_minimal_loss(position,monkeypatch)
 
 
 def test_exposed_ranged_member_and_screening(position):
-    e=position([(5,3,'B','south'),(3,3,'RB','north')],side='south')
+    e=position([(4,3,'B','south'),(3,3,'RB','north')],side='south')
     # North R screens only the north approach; Archer B is exposed to this rear shot.
-    action=(5,3,0,3,3,8)
+    action=(4,3,0,3,3,8)
     assert action in e.legal_actions()
-    assert (5,3,0,3,3,2) not in e.legal_actions()
+    assert (4,3,0,3,3,2) not in e.legal_actions()
     e.apply(action)
-    assert e.state.board.grid[5][3].is_empty()
+    assert e.state.board.grid[4][3].is_empty()
     assert e.state.board.grid[3][3].top.code=='R' and e.state.board.grid[3][3].layout==-1
-    e=position([(1,3,'B','south'),(3,3,'RB','north')],side='south')
-    assert not any(a[:2]==(1,3) and a[3:5]==(3,3) and a[-1] in (2,8) for a in e.legal_actions())
-    e=position([(3,1,'B','south'),(3,3,'PB','north')],side='south')
-    assert (3,1,0,3,3,2) in e.legal_actions() and (3,1,0,3,3,8) in e.legal_actions()
+    e=position([(2,3,'B','south'),(3,3,'RB','north')],side='south')
+    assert not any(a[:2]==(2,3) and a[3:5]==(3,3) and a[-1] in (2,8) for a in e.legal_actions())
+    e=position([(3,2,'B','south'),(3,3,'PB','north')],side='south')
+    assert (3,2,0,3,3,2) in e.legal_actions() and (3,2,0,3,3,8) in e.legal_actions()
 
 
 def test_physical_repetition_and_layout_observations(position):

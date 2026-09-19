@@ -155,7 +155,7 @@ test("ranged return fire removes actual shooter from either slot along all eight
   for (const owner of [1, -1])
     for (const [, dr, dc] of sectors)
       for (const slot of [0, 1]) {
-        const to = (3 + dr * 2) * 8 + 3 + dc * 2;
+        const to = (3 + dr) * 8 + 3 + dc;
         const s = setup(
           [
             [27, slot ? [owner, owner * 3] : [owner * 3, owner]],
@@ -201,45 +201,11 @@ test("non-retreat orders reset counts; formation breakthrough and capture have c
     );
     assert.equal(transition(s, action).state.retreats[0], 0);
   }
-  let s = setup(
-    [
-      [63, []],
-      [27, [1, 6]],
-      [36, [-3, -1]],
-    ],
-    1,
-    [2, 0],
-  );
-  let out = transition(s, a(27, 36, 1, 1));
+  const s = setup([[63, []], [27, [1, 6]], [36, [-3, -1]]], 1, [2, 0]);
+  assert(!has(s, a(27, 36, 1, 1))); // The King is unarmed.
+  const out = transition(s, a(27, 35, 0, 1));
   assert.equal(out.state.retreats[0], 3);
-  assert.equal(out.event.moved, true);
   assert.equal(out.state.reason, "commander_retreat_forfeit");
-  s = setup(
-    [
-      [63, []],
-      [27, [6]],
-      [36, [-3]],
-    ],
-    1,
-    [2, 0],
-  );
-  assert.equal(
-    transition(s, a(27, 36, 1)).state.reason,
-    "commander_retreat_forfeit",
-  );
-  s = setup(
-    [
-      [63, []],
-      [0, []],
-      [27, [6]],
-      [36, [-6, -1]],
-    ],
-    1,
-    [2, 0],
-  );
-  out = transition(s, a(27, 36, 1));
-  assert.equal(out.state.winner, 1);
-  assert.equal(out.state.reason, "commander_capture");
 });
 test("last supporting units trigger lone-Commander losses or simultaneous draw", () => {
   for (const [actor, target, kind, winner] of [

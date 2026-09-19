@@ -37,7 +37,15 @@ class GreedyAgent(RandomAgent):
     def select(self, engine):
         legal = engine.legal_orders()
         if not legal: return None
-        scored = [(score_action(engine, a), a) for a in legal]
+        def score(a):
+            r, c, slot, rr, _, kind = a
+            actor = (engine.state.board.grid[r][c].top, engine.state.board.grid[r][c].bottom)[slot]
+            owner = engine.state.to_move
+            if actor.code == "K" and kind == 0 and (engine.state.king_moves[owner] >= 3 or
+                    (engine.state.retreat_counts[owner] >= 2 and (rr-r)*(1 if owner == "north" else -1) > 0)):
+                return -1e9
+            return score_action(engine, a)
+        scored = [(score(a), a) for a in legal]
         best = max(v for v, _ in scored)
         order = self.rng.choice([a for v, a in scored if v == best])
         return suggest_preparation(engine, order) or order
@@ -86,7 +94,7 @@ def suggest_preparation(engine, order):
     if after.state.done:
         return None
     def units(sq):
-        return [(u.code, u.side) for u in (sq.top, sq.bottom) if u]
+        return [(u.code, u.side, u.veteran) for u in (sq.top, sq.bottom) if u]
     eligible = {a[0]*8+a[1] for a in options
                 if units(engine.state.board.grid[a[0]][a[1]]) == units(after.state.board.grid[a[0]][a[1]])}
     scores = {i: [0.0]*4 for i in eligible}

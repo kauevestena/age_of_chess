@@ -15,8 +15,10 @@ def snapshot(engine):
                       for u in (sq.top, sq.bottom) if u]
                      for row in s.board.grid for sq in row],
             'layout': [sq.layout for row in s.board.grid for sq in row], 'prepared': s.prepared[:],
+            'veteran': [[u.veteran for u in (sq.top, sq.bottom) if u] for row in s.board.grid for sq in row],
             'turn': 1 if s.to_move == 'north' else -1, 'ply': s.move_count,
             'retreats': [s.retreat_counts['north'], s.retreat_counts['south']],
+            'kingMoves': [s.king_moves['north'], s.king_moves['south']],
             'winner': {'north':1,'south':-1,'draw':0,None:None}[s.winner], 'reason':s.reason}
 
 def emit(engine, actions=None, chosen=None):
@@ -29,6 +31,7 @@ def emit(engine, actions=None, chosen=None):
                       'losses': event['losses'] if event else [],
                       'approach': event.get('approach') if event else None,
                       'stance': event.get('stance') if event else None,
+                      'veteranUnlocked': event.get('veteran_unlocked', False) if event else False,
                       'formation': event.get('formation') if event else None},separators=(',',':')))
 
 for _ in range(100):
@@ -44,9 +47,9 @@ for _ in range(1200):
     for idx, k in enumerate(squares):
         owner='north' if idx==0 else 'south' if idx==1 else rng.choice(['north','south'])
         c='K' if idx<2 else rng.choice('PNBR')
-        b.grid[k//8][k%8].add_unit(Unit(c,owner))
+        b.grid[k//8][k%8].add_unit(Unit(c,owner,c!='K' and rng.random()<.25))
         if rng.random()<.35:
-            sq=b.grid[k//8][k%8];sq.add_unit(Unit(rng.choice('PNBR'),owner))
+            sq=b.grid[k//8][k%8];sq.add_unit(Unit(rng.choice('PNBR'),owner,rng.random()<.25))
             sq.layout=canonical_layout(sq.top,sq.bottom,rng.randrange(4))
     free=[i for i in range(64) if i not in squares]
     for owner in ['north','south']:
@@ -54,6 +57,25 @@ for _ in range(1200):
             i=free.pop(rng.randrange(len(free))); b.grid[i//8][i%8].add_unit(Unit('Q',owner))
     e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=rng.choice(['north','south'])))
     emit(e)
+
+# Royal escort: every counter, axis, member order, owner and approach.
+for owner in ('north','south'):
+    actor_side='south' if owner=='north' else 'north'
+    sign=1 if owner=='north' else -1
+    for dr,dc in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
+        for layout in range(4):
+            for actor in 'PNBR':
+                for escort in 'PNBR':
+                    for king_slot in (0,1):
+                        b=Board(8,8)
+                        b.grid[7 if actor_side=='north' else 0][7].add_unit(Unit('K',actor_side))
+                        fr,fc=3+dr*sign,3+dc*sign
+                        b.grid[fr][fc].add_unit(Unit(actor,actor_side))
+                        sq=b.grid[3][3]
+                        for c in ('K'+escort if king_slot==0 else escort+'K'):sq.add_unit(Unit(c,owner))
+                        sq.layout=layout
+                        e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=actor_side))
+                        emit(e,chosen=(fr,fc,0,3,3,1))
 
 # Special-class and mixed formation legality, including Commander exposure.
 for actor in 'PNBRQK':

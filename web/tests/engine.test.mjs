@@ -133,15 +133,15 @@ test("ranged rays stop at a friendly unit; power shot retains stack order", () =
   assert(!has(blocked, a(36, 20, 2)));
   const s = setup([
     [36, [3, 3]],
-    [20, [-4, -6]],
+    [28, [-4, -6]],
     [0, []],
   ]);
-  const shot = transition(s, a(36, 20, 2, 1));
+  const shot = transition(s, a(36, 28, 2, 1));
   assert.deepEqual(shot.state.board[36], [3, 3]);
-  assert.deepEqual(shot.state.board[20], [-6]);
+  assert.deepEqual(shot.state.board[28], [-6]);
   assert.equal(shot.state.winner, 1);
   assert.equal(shot.state.reason, "lone_commander");
-  assert(!has(shot.state, a(36, 20, 2)));
+  assert(!has(shot.state, a(36, 28, 2)));
 });
 test("conversion is solitary and changes direction without moving the Priestess", () => {
   const s = setup([
@@ -166,13 +166,14 @@ test("opposing Priestesses die simultaneously, including bottom slots", () => {
 });
 test("Commander capture wins even when a bottom defender remains", () => {
   const s = setup([
-    [36, [1]],
+    [20, [1]],
     [28, [-6, -3]],
     [0, []],
   ]);
-  const out = transition(s, a(36, 28, 1));
+  s.layout[28] = 0; // Rear approach exposes King A.
+  const out = transition(s, a(20, 28, 1));
   assert.equal(out.state.winner, 1);
-  assert.deepEqual(out.state.board[36], [1]);
+  assert.deepEqual(out.state.board[20], [1]);
   assert.deepEqual(out.state.board[28], [-3]);
 });
 test("retreat triggers, enemy half and last rank have distinct permissions", () => {
@@ -186,7 +187,7 @@ test("retreat triggers, enemy half and last rank have distinct permissions", () 
     ),
   );
   assert(
-    has(
+    !has(
       setup([
         [63, []],
         [3, [6]],

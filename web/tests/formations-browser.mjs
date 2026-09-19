@@ -80,7 +80,7 @@ export async function formationChecks(browser, url, monitor, check, out) {
         let action;
         if(scenario==="reserve") {board[43]=[-2];board[35]=[1,3];action=[5,3,0,4,3,1];}
         else if(scenario==="simultaneous") {board[36]=[-1];board[35]=[2,2];action=[4,4,0,4,3,1];}
-        else {board[51]=[-3];board[35]=[4,3];action=[6,3,0,4,3,8];}
+        else {board[43]=[-3];board[35]=[4,3];action=[5,3,0,4,3,8];}
         const before=studyState(board,-1),result=transition(before,action);
         window.formationCinemaDone=false;
         const director=new CombatDirector({effect(){}});

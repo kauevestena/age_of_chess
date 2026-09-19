@@ -56,7 +56,7 @@ def main():
             idx = encode_action(*act)
             env.step(idx)
             event = env.unwrapped.history[-1]
-            event_record = {"rules_version": 4, "move_no": move_no if agent=='north' else move_no+0.5, "agent": agent, **event}
+            event_record = {"rules_version": engine.rules.game.version, "move_no": move_no if agent=='north' else move_no+0.5, "agent": agent, **event}
             jf.write(json.dumps(event_record)+"\n")
             if is_preparation(event["atype"]):
                 pf.write(f"{{{pretty_move(event)}}} ")

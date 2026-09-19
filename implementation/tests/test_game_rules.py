@@ -15,7 +15,6 @@ from implementation.age_of_chess.env import Engine
     ("P","N",(True,False,False)), ("N","P",(False,True,False)),
     ("B","N",(False,True,False)), ("N","B",(True,False,False)),
     ("B","R",(False,True,False)), ("R","B",(True,False,False)),
-    ("K","K",(True,False,False)),
 ])
 def test_melee_dominance(rules, att, defender, outcome):
     assert resolve_melee(Unit(att,"north"),Unit(defender,"south"),None,rules) == outcome
@@ -65,30 +64,30 @@ def test_commander_precedence_and_distance(position):
     e=position([(3,3,"K","north"),(1,1,"P","south")])
     assert (3,3,0,4,3,0) in e.legal_actions()  # Chebyshev distance 2
     e=position([(0,3,"K","north")])
-    assert (0,3,0,1,3,0) in e.legal_actions()  # last rank overrides forward-only
+    assert (0,3,0,1,3,0) not in e.legal_actions()  # Kings still need peril on the last rank
 
 @pytest.mark.parametrize("stack,slot",[("BQ",0),("PB",1)])
 def test_shooting_preserves_source_order(position,stack,slot):
-    e=position([(4,3,stack,"north"),(2,3,"P","south")])
-    e.apply((4,3,slot,2,3,2))
+    e=position([(4,3,stack,"north"),(3,3,"P","south")])
+    e.apply((4,3,slot,3,3,2))
     sq=e.state.board.grid[4][3]
     assert sq.top.code+sq.bottom.code == stack
-    assert e.state.board.grid[2][3].is_empty()
+    assert e.state.board.grid[3][3].is_empty()
 
 @pytest.mark.parametrize("target",list("NR"))
 @pytest.mark.parametrize("slot",[0,1])
 def test_power_shot_top_only(position,target,slot):
-    e=position([(4,3,"BB","north"),(2,3,target+"P","south")])
-    e.apply((4,3,slot,2,3,2))
-    sq=e.state.board.grid[2][3]
+    e=position([(4,3,"BB","north"),(3,3,target+"P","south")])
+    e.apply((4,3,slot,3,3,2))
+    sq=e.state.board.grid[3][3]
     assert sq.top.code=="P" and sq.bottom is None
     assert e.state.board.grid[4][3].bottom.code=="B"
 
 def test_shooting_blockers_and_configuration(position):
     e=position([(4,3,"B","north"),(3,3,"N","south"),(2,3,"P","south")])
     assert not any(a[-1]==2 for a in e.legal_actions())
-    e=position([(4,3,"B","north"),(2,3,"P","south")])
-    assert (4,3,0,2,3,2) in e.legal_actions()
+    e=position([(4,3,"B","north"),(3,3,"P","south")])
+    assert (4,3,0,3,3,2) in e.legal_actions()
     e.rules=e.rules.model_copy(deep=True)
     e.rules.game.pieces["B"].abilities=[]
     assert not any(a[-1]==2 for a in e.legal_actions())
@@ -121,10 +120,11 @@ def test_conversion_cycle_draws_on_third_occurrence(position):
     assert e.state.terminated and e.state.winner=="draw"
     assert e.state.move_count==4 and not e.legal_actions()
 
-def test_commander_capture_has_priority(position):
-    for actor in "PNBRQK":
-        row=5 if actor=="N" else 4
+def test_rear_king_capture_has_priority(position):
+    for actor in "PNBRQ":
+        row = 1 if actor == "N" else 2
         e=position([(row,3,actor,"north"),(3,3,"KP","south")])
+        e.state.board.grid[3][3].layout=0  # King physically exposed to the rear.
         e.apply((row,3,0,3,3,1))
         assert e.state.winner=="north"
         assert e.state.board.grid[row][3].top.code==actor
@@ -202,4 +202,4 @@ def test_all_permitted_local_stack_combats_preserve_invariants(position):
                 after=sum(u is not None for r in e.state.board.grid for s in r for u in (s.top,s.bottom))
                 assert before-after==len(event["losses"])
                 checked+=1
-    assert checked>=170
+    assert checked>=130  # Kings no longer contribute legal attacks.

@@ -3,7 +3,7 @@ POSITIONS = (("N", "S"), ("S", "N"), ("W", "E"), ("E", "W"))
 
 
 def canonical_layout(top, bottom, layout):
-    return -1 if bottom is None else layout & 2 if top.code == bottom.code else layout
+    return -1 if bottom is None else layout & 2 if (top.code, top.veteran) == (bottom.code, bottom.veteran) else layout
 
 
 def attack_sector(from_pos, to_pos, defender_side):
@@ -36,6 +36,8 @@ def resolve_combat(att, def_top, def_bottom, rules, *, from_pos=None, to_pos=Non
     if layout is None:
         layout = canonical_layout(def_top, def_bottom, 0 if def_top.side == "north" else 1)
 
+    king_guard = bool(def_bottom and any(d.code == "K" for d in defenders) and approach in (1, 2, 3, 4, 6))
+
     def duel(defender, sector):
         result = rules.game.combat.single[att.code][defender.code]
         if result == "illegal":
@@ -44,11 +46,14 @@ def resolve_combat(att, def_top, def_bottom, rules, *, from_pos=None, to_pos=Non
             return result == "win", result == "lose"
         if sector is None:
             raise ValueError("Matching-class melee requires its approach")
+        if king_guard:
+            return (False, True) if approach in (1, 2, 3) else (False, False)
         return sector not in (1, 2, 3), sector == 2
 
     survive, waves = [True] * len(defenders), []
-    line = bool(def_bottom and layout >= 2 and approach in (1, 2, 3))
-    exposed = [0, 1] if line else contact_slots(from_pos, to_pos, def_bottom, layout)
+    line = bool(def_bottom and not king_guard and layout >= 2 and approach in (1, 2, 3))
+    exposed = ([next(i for i, d in enumerate(defenders) if d.code != "K")] if king_guard else
+               [0, 1] if line else contact_slots(from_pos, to_pos, def_bottom, layout))
 
     def engage(slots, sector, reserve=False):
         hits = [duel(defenders[i], sector) for i in slots]
@@ -64,7 +69,7 @@ def resolve_combat(att, def_top, def_bottom, rules, *, from_pos=None, to_pos=Non
     first = exposed[0]
     if def_bottom and len(exposed) == 1 and alive and not survive[first] and defenders[first].code != "K":
         alive = engage([1-first], 2, True)
-    mode = ("single" if not def_bottom else "braced_line" if line else "simultaneous" if len(exposed) == 2
+    mode = ("king_guard" if king_guard else "single" if not def_bottom else "braced_line" if line else "simultaneous" if len(exposed) == 2
             else "serial" if len(waves) == 2 else "screen")
     return dict(alive=alive, survive=survive, approach=approach, waves=waves, mode=mode)
 

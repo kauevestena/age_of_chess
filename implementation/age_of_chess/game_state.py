@@ -7,6 +7,7 @@ from .combat import canonical_layout, POSITIONS
 class Unit:
     code: str
     side: str
+    veteran: bool = False
 
 @dataclass
 class Square:
@@ -56,7 +57,7 @@ class Board:
 
     def copy(self):
         def clone(u):
-            return Unit(u.code, u.side) if u else None
+            return Unit(u.code, u.side, u.veteran) if u else None
         return Board(self.rows, self.cols, [[Square(clone(s.top), clone(s.bottom), s.layout) for s in row]
                                            for row in self.grid])
 
@@ -79,10 +80,12 @@ class Board:
                     if u:
                         if u.code not in "PNBRQK" or u.side not in ("north", "south"):
                             raise ValueError("Unknown unit")
+                        if type(u.veteran) is not bool or (u.code == "K" and u.veteran):
+                            raise ValueError("Only non-Kings may retain backward movement")
                         if u.code == "K": kings[u.side] += 1
                         if u.code == "Q": queens[u.side] += 1
         if any(n > 1 for n in kings.values()) or any(n > 1 for n in queens.values()):
-            raise ValueError("At most one Commander and Priestess per side")
+            raise ValueError("At most one King and Priestess per side")
 
 @dataclass
 class GameState:
@@ -97,6 +100,7 @@ class GameState:
     retreat_counts: dict[str, int] = field(default_factory=lambda: {"north": 0, "south": 0})
 
     prepared: list[int] = field(default_factory=list)
+    king_moves: dict[str, int] = field(default_factory=lambda: {"north": 0, "south": 0})
 
     @property
     def done(self):
@@ -105,7 +109,7 @@ class GameState:
     def position_key(self):
         def key(u):
             if u is None: return 0
-            return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1)
+            return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1 + 6*int(u.veteran))
         cells = []
         for row in self.board.grid:
             for sq in row:
@@ -117,12 +121,13 @@ class GameState:
                     physical[0] = key(sq.top)
                 cells.extend(physical)
         return (self.to_move, tuple(cells),
-                (self.retreat_counts["north"], self.retreat_counts["south"]))
+                (self.retreat_counts["north"], self.retreat_counts["south"]),
+                (self.king_moves["north"], self.king_moves["south"]))
 
     def copy(self):
         return GameState(self.board.copy(), self.to_move, self.terminated, self.truncated,
                          self.winner, self.reason, self.move_count, self.position_counts.copy(),
-                         self.retreat_counts.copy(), self.prepared.copy())
+                         self.retreat_counts.copy(), self.prepared.copy(), self.king_moves.copy())
 
 def standard_setup(rows=8, cols=8):
     if (rows, cols) != (8, 8):

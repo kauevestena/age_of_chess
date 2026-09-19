@@ -47,7 +47,7 @@ def draw_board(screen, env, show_legal=False):
                     x,y = c*TILE+TILE//2+dx, r*TILE+TILE//2+dy
                     col = COLORS[u.side]
                     pygame.draw.circle(screen, col, (x,y), 16)
-                    txt = font.render(SYMBOL[u.code], True, COLORS["text"])
+                    txt = font.render(SYMBOL[u.code] + ("*" if u.veteran else ""), True, COLORS["text"])
                     screen.blit(txt, (x-7,y-12))
 
 
