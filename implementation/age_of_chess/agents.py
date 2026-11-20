@@ -8,13 +8,23 @@ from .combat import canonical_layout
 def material(engine):
     return engine._material()
 
+# Warp has no material swing. Agents credit it with a small positional value: a fraction
+# of the warped unit's value for every row it is sent beyond the warper's King row. The
+# weight stays below a Pikeman capture, so Warp replaces quiet moves, never captures.
+WARP_WEIGHT = 0.1
+
 def warp_groups(actions):
-    """Group Warp actions by warped unit: {(row, col): [action, ...]}."""
+    """Group Warp actions by warped unit: {(row, col, member): [action, ...]}."""
     groups = {}
     for a in actions:
         if a[5] == 3:
-            groups.setdefault((a[0], a[1]), []).append(a)
+            groups.setdefault((a[0], a[1], a[2]), []).append(a)
     return groups
+
+def own_king_row(engine):
+    side = engine.state.to_move
+    return next(r for r, row in enumerate(engine.state.board.grid) for sq in row
+                for u in (sq.top, sq.bottom) if u and u.code == "K" and u.side == side)
 
 def best_warp(engine, options, rng):
     """Spec 10.3: exile the unit as far as possible from the warping side's King row.
@@ -39,12 +49,16 @@ def collapse_warps(engine, actions, rng):
 def score_action(engine, action):
     """Immediate material swing on a settled position, without copying the board."""
     fr, fc, slot, tr, tc, kind = action
-    if kind in (0, 3) or is_preparation(kind):
-        # Automatic adjacent Priestess deaths remove one Q per side, equal values;
-        # a Warp moves a unit without a material swing.
+    if kind == 0 or is_preparation(kind):
+        # Automatic adjacent Priestess deaths remove one Q per side, equal values.
         return 0.0
     values = engine.rules.game.pieces
     src, dst = engine.state.board.grid[fr][fc], engine.state.board.grid[tr][tc]
+    if kind == 3:
+        # No material swing; see WARP_WEIGHT for the positional credit.
+        target = (src.top, src.bottom)[slot]
+        king_row = own_king_row(engine)
+        return WARP_WEIGHT * values[target.code].value * max(0, abs(tr-king_row)-abs(fr-king_row)) / 7
     actor = (src.top, src.bottom)[slot]
     if is_shot(kind):
         target = (dst.top, dst.bottom)[shot_slot(kind)]
@@ -73,7 +87,7 @@ class GreedyAgent(RandomAgent):
         legal = collapse_warps(engine, legal, self.rng)
         def score(a):
             r, c, slot, rr, _, kind = a
-            if kind == 3: return 0.0
+            if kind == 3: return score_action(engine, a)
             actor = (engine.state.board.grid[r][c].top, engine.state.board.grid[r][c].bottom)[slot]
             owner = engine.state.to_move
             if actor.code == "K" and kind == 0 and (engine.state.king_moves[owner] >= 3 or

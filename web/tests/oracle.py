@@ -125,26 +125,28 @@ for owner in ('north','south'):
                         e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=actor_side))
                         emit(e,chosen=(fr,fc,0,3,3,1))
 
-# Warp: every target class, solitary or stacked, Priestess in either subcell or escorting
-# the King, both owners, with a spread of enemy King rows so reference rows differ.
+# Warp: every target class, solitary or in a formation (with either member order), Priestess
+# alone, in a formation or escorting the King, targets one and two squares away (including
+# out of range), both owners, and several enemy King rows.
 for owner in ('north','south'):
     enemy='south' if owner=='north' else 'north'
     for target in 'PNBRQK':
         for stacked in (False,True):
             for pair in ('Q','QP','PQ','QK','KQ'):
                 for king_row in (0,3,7):
-                    b=Board(8,8)
-                    if 'K' not in pair: b.grid[7 if owner=='north' else 0][7].add_unit(Unit('K',owner))
-                    for c in pair: b.grid[4][3].add_unit(Unit(c,owner))
-                    if target=='K':
-                        b.grid[3][3].add_unit(Unit('K',enemy))
-                        b.grid[king_row][0].add_unit(Unit('P',enemy))   # supporter: a lone King ends the game
-                    else:
-                        b.grid[king_row][0].add_unit(Unit('K',enemy))
-                        b.grid[3][3].add_unit(Unit(target,enemy))
-                    if stacked: b.grid[3][3].add_unit(Unit('P',enemy))
-                    e=Engine('rulesets/default.yaml')
-                    try: e.set_state(GameState(b,to_move=owner))
-                    except ValueError: continue
-                    warps=[a for a in e.legal_actions() if a[5]==3]
-                    emit(e,chosen=rng.choice(warps) if warps else None)
+                    for at in ((3,3),(2,3),(2,5),(1,3)):
+                        b=Board(8,8)
+                        if 'K' not in pair: b.grid[7 if owner=='north' else 0][7].add_unit(Unit('K',owner))
+                        for c in pair: b.grid[4][3].add_unit(Unit(c,owner))
+                        if target=='K':
+                            b.grid[at[0]][at[1]].add_unit(Unit('K',enemy))
+                            b.grid[king_row][0].add_unit(Unit('P',enemy))   # supporter: a lone King ends the game
+                        else:
+                            b.grid[king_row][0].add_unit(Unit('K',enemy))
+                            b.grid[at[0]][at[1]].add_unit(Unit(target,enemy))
+                        if stacked: b.grid[at[0]][at[1]].add_unit(Unit(rng.choice('PNBR'),enemy))
+                        e=Engine('rulesets/default.yaml')
+                        try: e.set_state(GameState(b,to_move=owner))
+                        except ValueError: continue
+                        warps=[a for a in e.legal_actions() if a[5]==3]
+                        emit(e,chosen=rng.choice(warps) if warps else None)

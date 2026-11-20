@@ -232,21 +232,40 @@ def test_priestess_contact_step_and_king_peril_unchanged(rules):
 
 # --------------------------------------------------------------------------- Warp
 
+def variant(rules, warp_range, breaks):
+    """A ruleset copy with the Priestess's Warp range and formation breaking set explicitly."""
+    r = rules.model_copy(deep=True)
+    ability = r.game.pieces["Q"].abilities[0]
+    ability.range, ability.breaks_formations = warp_range, breaks
+    return r
+
+
 WARP_POSITION = [(4, 3, "Q", "north"), (7, 4, "K", "north"), (7, 0, "P", "north"),
                  (3, 3, "P", "south"), (3, 4, "R", "south"), (4, 2, "PP", "south"),
                  (0, 4, "K", "south"), (0, 0, "B", "south")]
+SIDE_KINGS = [(0, 7, "K", "south"), (7, 7, "K", "north"), (0, 0, "P", "south"), (7, 0, "P", "north")]
 
 
 def warps(engine):
     return [a for a in engine.legal_actions() if a[5] == 3]
 
 
-def test_spec_warp_example(rules):
-    e = raw_engine(rules, WARP_POSITION)
+def warp_sources(engine):
+    return {(a[0], a[1], a[2]) for a in warps(engine)}
+
+
+def test_shipped_warp_has_range_two_and_breaks_formations(rules):
+    ability = rules.game.pieces["Q"].abilities[0]
+    assert ability.name == "warp" and ability.range == 2 and ability.breaks_formations
+
+
+def test_spec_warp_example_with_original_limits(rules):
+    # Range one, solitary targets only: the specification's first example.
+    e = raw_engine(variant(rules, 1, False), WARP_POSITION)
     legal = warps(e)
     empties = [(r, c) for r in range(8) for c in range(8) if e.state.board.grid[r][c].is_empty()]
     assert len(empties) == 56 and len(legal) == 112
-    assert {(a[0], a[1]) for a in legal} == {(3, 3), (3, 4)} and all(a[2] == 0 for a in legal)
+    assert warp_sources(e) == {(3, 3, 0), (3, 4, 0)}
     assert {(a[3], a[4]) for a in legal} == set(empties)
     e.apply((3, 4, 0, 0, 7, 3))
     assert e.state.board.grid[3][4].is_empty() and codes(e.state.board.grid[0][7]) == "R"
@@ -254,25 +273,61 @@ def test_spec_warp_example(rules):
     assert quiet_of(e, (0, 7)) == {(1, 6), (1, 7)}
 
 
-def test_warp_targets_and_destinations_are_restricted(rules):
-    # Kings, formation members, friendly units and distant units cannot be warped.
-    for target, owner, at in [("K", "south", (3, 3)), ("PP", "south", (3, 3)), ("PB", "south", (3, 3)),
-                              ("P", "north", (3, 3)), ("R", "south", (2, 3))]:
+def test_example_with_range_two_and_formation_breaking(rules):
+    e = raw_engine(rules, WARP_POSITION)
+    assert warp_sources(e) == {(3, 3, 0), (3, 4, 0), (4, 2, 0), (4, 2, 1)}
+    assert len(warps(e)) == 4 * 56
+    # Distance-two units are reachable: the Heavy Infantry, a distance-three Pikeman is not.
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (2, 3, "R", "south"), (1, 3, "P", "south"), *SIDE_KINGS])
+    assert warp_sources(e) == {(2, 3, 0)}
+
+
+@pytest.mark.parametrize("warp_range,breaks", [(1, False), (1, True), (2, False), (2, True)])
+def test_range_and_breaking_settings(rules, warp_range, breaks):
+    base = [(4, 3, "Q", "north"), *SIDE_KINGS]
+    near = raw_engine(variant(rules, warp_range, breaks), base + [(3, 3, "P", "south")])
+    assert warp_sources(near) == {(3, 3, 0)}
+    far = raw_engine(variant(rules, warp_range, breaks), base + [(2, 3, "P", "south")])
+    assert bool(warp_sources(far)) == (warp_range == 2)
+    gone = raw_engine(variant(rules, warp_range, breaks), base + [(1, 3, "P", "south")])
+    assert not warp_sources(gone)                       # Three squares away is never in range.
+    stacked = raw_engine(variant(rules, warp_range, breaks), base + [(3, 3, "PB", "south")])
+    assert warp_sources(stacked) == ({(3, 3, 0), (3, 3, 1)} if breaks else set())
+
+
+def test_warp_needs_no_line_of_sight(rules):
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "P", "north"), (2, 3, "N", "south"), *SIDE_KINGS])
+    assert warp_sources(e) == {(2, 3, 0)}               # Past a friendly unit, still in range.
+
+
+@pytest.mark.parametrize("stack", ["PK", "KP", "RK", "KR"])
+def test_formations_with_a_king_are_immune(rules, stack):
+    extra = [(0, 7, "P", "south")] if "K" in stack else [(0, 7, "K", "south")]
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, stack, "south"), (7, 7, "K", "north"), (7, 0, "P", "north")] + extra)
+    assert not warp_sources(e)
+
+
+def test_other_immunities_remain(rules):
+    base = [(7, 7, "K", "north"), (7, 0, "P", "north")]
+    for target, owner, at in [("K", "south", (3, 3)), ("P", "north", (3, 3)), ("R", "south", (1, 3))]:
         extra = [] if target == "K" and owner == "south" else [(0, 7, "K", "south")]
-        e = raw_engine(rules, [(4, 3, "Q", "north"), (*at, target, owner), *extra, (7, 7, "K", "north"),
-                               (0, 0, "P", "south"), (7, 0, "P", "north")])
-        assert (at[0], at[1]) not in {(a[0], a[1]) for a in warps(e)}, (target, owner, at)
-    # An occupied square is never a destination, even when it holds one ally of the target.
-    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "R", "south"), (3, 5, "P", "south"), (6, 6, "P", "north"),
-                           (0, 7, "K", "south"), (7, 7, "K", "north")])
+        e = raw_engine(rules, [(4, 3, "Q", "north"), (*at, target, owner), *extra, *base, (0, 0, "P", "south")])
+        assert (at[0], at[1], 0) not in warp_sources(e), (target, owner, at)
+    # A formation of a Priestess and another unit: only the companion can be warped.
+    board = Board(8, 8)
+    for r, c, units, owner in [(4, 3, "Q", "north"), (2, 3, "PQ", "south"), (0, 7, "K", "south"), (7, 7, "K", "north")]:
+        for code in units:
+            board.grid[r][c].add_unit(Unit(code, owner))
+    e = Engine(rules=rules)
+    e.state = GameState(board)
+    assert {(a[0], a[1], a[2]) for a in e.legal_actions_unfiltered() if a[5] == 3} == {(2, 3, 0)}
+    # Occupied squares are never destinations, even when open to the target's owner.
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "R", "south"), (3, 5, "P", "south"), (6, 6, "P", "north"), *SIDE_KINGS[:2]])
     destinations = {(a[3], a[4]) for a in warps(e)}
-    assert (3, 5) not in destinations and (6, 6) not in destinations and (3, 3) not in destinations
+    assert not destinations & {(3, 5), (6, 6), (3, 3), (4, 3)}
 
 
 def test_priestess_is_never_warpable(rules):
-    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "Q", "south"), (0, 7, "K", "south"), (7, 7, "K", "north"),
-                           (0, 0, "P", "south"), (7, 0, "P", "north")], side="north")
-    assert e.state.board.grid[4][3].is_empty() and e.state.board.grid[3][3].is_empty()   # Both die first.
     board = Board(8, 8)
     for r, c, code, owner in [(4, 3, "Q", "north"), (3, 3, "Q", "south"), (0, 7, "K", "south"), (7, 7, "K", "north")]:
         board.grid[r][c].add_unit(Unit(code, owner))
@@ -281,28 +336,37 @@ def test_priestess_is_never_warpable(rules):
     assert not any(a[5] == 3 for a in e.legal_actions_unfiltered())
 
 
-def test_warp_changes_only_the_two_squares(rules):
-    e = raw_engine(rules, [(4, 3, "QP", "north"), (3, 3, "N", "south"), (2, 2, "B", "south"),
-                           (0, 7, "K", "south"), (7, 7, "K", "north")])
+@pytest.mark.parametrize("slot", [0, 1])
+def test_breaking_a_formation_leaves_a_singleton(rules, slot):
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 2, "NB", "south"), (6, 6, "R", "north"), *SIDE_KINGS[:2], (0, 0, "P", "south")])
+    other = "B" if slot == 0 else "N"
     snapshot = copy.deepcopy(e.state.board)
-    event = e.apply((3, 3, 0, 6, 0, 3))
+    event = e.apply((3, 2, slot, 7, 2, 3))
+    kept = e.state.board.grid[3][2]
+    assert codes(kept) == other and kept.bottom is None and kept.layout == -1 and kept.top.side == "south"
+    landed = e.state.board.grid[7][2]
+    assert codes(landed) == ("N" if slot == 0 else "B") and landed.bottom is None and landed.layout == -1
+    assert event["warp"]["slot"] == slot and event["losses"] == [] and not event["moved"]
     for r in range(8):
         for c in range(8):
-            if (r, c) not in {(3, 3), (6, 0)}:
+            if (r, c) not in {(3, 2), (7, 2)}:
                 assert codes(e.state.board.grid[r][c]) == codes(snapshot.grid[r][c])
-                assert e.state.board.grid[r][c].layout == snapshot.grid[r][c].layout
-    assert codes(e.state.board.grid[6][0]) == "N" and e.state.board.grid[6][0].top.side == "south"
-    assert event["losses"] == [] and event["warp"]["unit"] == "N" and not event["moved"]
-    assert event["actor"] == "Q" and event["warp"]["priestess"] == (4, 3) and event["atype"] == 3
 
 
-@pytest.mark.parametrize("units,slot", [("QP", 0), ("PQ", 1), ("QK", 0), ("KQ", 1)])
-def test_warp_from_either_subcell_including_the_king_escort(rules, units, slot):
-    e = raw_engine(rules, [(4, 3, units, "north"), (3, 3, "B", "south"), (0, 7, "K", "south"), (0, 0, "P", "south")]
-                   + ([] if "K" in units else [(7, 7, "K", "north")]))
-    assert any(a[:2] == (3, 3) for a in warps(e))
-    e.apply(next(a for a in warps(e) if a[:2] == (3, 3)))
-    assert codes(e.state.board.grid[4][3]) == units and codes(e.state.board.grid[3][3]) == ""
+def test_warping_identical_formation_members_is_symmetric(rules):
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "PP", "south"), *SIDE_KINGS])
+    assert {a[:3] for a in warps(e)} == {(3, 3, 0), (3, 3, 1)}
+    e.apply((3, 3, 1, 0, 1, 3))
+    assert codes(e.state.board.grid[3][3]) == "P" and codes(e.state.board.grid[0][1]) == "P"
+
+
+def test_priestess_warps_from_range_either_subcell(rules):
+    for units in ("QP", "PQ", "QK", "KQ"):
+        extra = [] if "K" in units else [(7, 7, "K", "north")]
+        e = raw_engine(rules, [(4, 3, units, "north"), (2, 3, "B", "south"), (0, 7, "K", "south"), (0, 0, "P", "south")] + extra)
+        action = next(a for a in warps(e) if a[:2] == (2, 3))
+        e.apply(action)
+        assert codes(e.state.board.grid[4][3]) == units and codes(e.state.board.grid[2][3]) == ""
 
 
 def test_warp_resets_only_the_warpers_king_streaks(rules):
@@ -322,6 +386,7 @@ def test_warp_keeps_the_minimal_loss_rule_out_of_the_way(rules):
     e.legal_actions_unfiltered = lambda: [losing, warp]
     assert e.immediate_own_deaths(losing) == ["P"] and e.immediate_own_deaths(warp) == []
     assert e.legal_orders() == [losing, warp]
+    assert e.immediate_own_deaths((3, 4, 1, 0, 0, 3)) == []
 
 
 def test_a_side_with_only_warps_is_not_stagnated(rules):
@@ -350,11 +415,12 @@ def test_warped_unit_near_a_king_puts_that_king_in_peril(rules):
     assert (6, 5, 0, 7, 5, 0) in e.legal_actions()
 
 
-def test_warp_mask_matches_legal_warps(rules):
+def test_warp_mask_matches_legal_warps_including_member_slots(rules):
     e = raw_engine(rules, WARP_POSITION)
     mask = e.action_mask()
     kind3 = {decode_action(i) for i in np.flatnonzero(mask) if decode_action(i)[5] == 3}
-    assert kind3 == set(warps(e))
+    assert kind3 == set(warps(e)) and {a[2] for a in kind3} == {0, 1}
+    assert all(encode_action(*a) < ACTION_SPACE_SIZE for a in kind3)
 
 
 # --------------------------------------------------------------------------- state and interfaces
@@ -385,7 +451,9 @@ def test_identical_classes_are_always_interchangeable(rules):
     lambda g: g["pieces"]["Q"]["abilities"][0].update(name="convert"),
     lambda g: g["pieces"]["Q"]["abilities"][0].update(targets=["P", "Q"]),
     lambda g: g["pieces"]["Q"]["abilities"][0].update(targets=["P", "K"]),
-    lambda g: g["pieces"]["Q"]["abilities"][0].update(range=2),
+    lambda g: g["pieces"]["Q"]["abilities"][0].update(range=3),
+    lambda g: g["pieces"]["B"]["abilities"][0].update(range=2),
+    lambda g: g["pieces"]["B"]["abilities"][0].update(breaks_formations=True),
     lambda g: g["pieces"]["B"]["abilities"].append({"name": "warp", "range": 1, "targets": ["P"]}),
 ])
 def test_schema_rejects_removed_or_misplaced_rules(tmp_path, mutate):
@@ -411,7 +479,7 @@ def test_every_action_id_round_trips():
 # --------------------------------------------------------------------------- agents
 
 def test_random_agent_treats_all_warps_of_a_target_as_one_option(rules):
-    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "P", "south"), (0, 7, "K", "south"), (7, 7, "K", "north"),
+    e = raw_engine(variant(rules, 1, False), [(4, 3, "Q", "north"), (3, 3, "P", "south"), (0, 7, "K", "south"), (7, 7, "K", "north"),
                            (0, 0, "P", "south"), (7, 0, "P", "north")])
     legal = e.legal_actions()
     options = len([a for a in legal if a[5] != 3]) + 1
@@ -458,3 +526,20 @@ def test_seeded_games_preserve_unit_conservation_and_never_lose_units_to_warp(ru
         assert before - after == len(event["losses"])
         if action[5] == 3:
             assert event["losses"] == []
+
+
+def test_greedy_prefers_warp_to_quiet_moves_but_never_to_captures(rules):
+    quiet_only = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "R", "south"), *SIDE_KINGS])
+    choice = GreedyAgent(0).select(quiet_only)
+    assert choice[5] == 3 and choice[3] == 0          # Exiled to the far row.
+    capture = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "R", "south"), (4, 1, "P", "north"), (3, 1, "B", "south"),
+                                 (0, 7, "K", "south"), (7, 7, "K", "north"), (0, 0, "P", "south")])
+    assert GreedyAgent(0).select(capture)[:2] == (4, 1) and GreedyAgent(0).select(capture)[5] == 1
+
+
+def test_random_agent_counts_each_formation_member_as_its_own_warp_option(rules):
+    e = raw_engine(rules, [(4, 3, "Q", "north"), (3, 3, "PB", "south"), *SIDE_KINGS])
+    agent = RandomAgent(11)
+    picks = [agent.select(e) for _ in range(1500)]
+    members = {a[2] for a in picks if a[5] == 3}
+    assert members == {0, 1}

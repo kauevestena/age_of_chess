@@ -109,7 +109,8 @@ export const RULES = {
             "P",
             "Q"
           ],
-          "requires_stack_size": 1
+          "requires_stack_size": 1,
+          "breaks_formations": false
         },
         {
           "name": "power_shot",
@@ -118,7 +119,8 @@ export const RULES = {
             "N",
             "R"
           ],
-          "requires_stack_size": 2
+          "requires_stack_size": 2,
+          "breaks_formations": false
         }
       ],
       "value": 3.0
@@ -173,14 +175,15 @@ export const RULES = {
       "abilities": [
         {
           "name": "warp",
-          "range": 1,
+          "range": 2,
           "targets": [
             "P",
             "N",
             "B",
             "R"
           ],
-          "requires_stack_size": 1
+          "requires_stack_size": 1,
+          "breaks_formations": true
         }
       ],
       "value": 4.0

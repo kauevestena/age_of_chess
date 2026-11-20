@@ -199,18 +199,23 @@ export function unfilteredActions(state) {
       }
       for (const ability of spec.abilities) {
         if (ability.name === "warp") {
-          // W2/W3: one adjacent solitary enemy unit to any empty square.
-          for (const [dr, dc] of directions) {
-            const rr = r + dr, cc = c + dc;
-            if (!inside(rr, cc)) continue;
-            const dst = state.board[rr * 8 + cc];
-            if (dst.length === 1 && side(dst[0]) !== owner && ability.targets.includes(code(dst[0])))
-              for (let e = 0; e < 64; e++)
-                if (!state.board[e].length) {
-                  const a = [rr, cc, 0, e >> 3, e % 8, 3];
-                  actions.set(actionKey(a), a);
-                }
-          }
+          // W2/W3: an enemy unit within range (no line needed) to any empty square. A formation
+          // member may be warped when the ability breaks formations, unless a King is in it;
+          // the action's slot names the member.
+          for (let rr = Math.max(0, r - ability.range); rr <= Math.min(7, r + ability.range); rr++)
+            for (let cc = Math.max(0, c - ability.range); cc <= Math.min(7, c + ability.range); cc++) {
+              const dst = state.board[rr * 8 + cc];
+              if ((rr === r && cc === c) || !dst.length || side(dst[0]) === owner) continue;
+              if (dst.length === 2 && !(ability.breaks_formations && !dst.some((u) => code(u) === "K"))) continue;
+              dst.forEach((unit, targetSlot) => {
+                if (!ability.targets.includes(code(unit))) return;
+                for (let e = 0; e < 64; e++)
+                  if (!state.board[e].length) {
+                    const a = [rr, cc, targetSlot, e >> 3, e % 8, 3];
+                    actions.set(actionKey(a), a);
+                  }
+              });
+            }
         } else {
           if (
             ability.requires_stack_size === 2 &&
@@ -269,16 +274,16 @@ function ownDeaths(state, action) {
   return [];
 }
 
-// Friendly Warp-capable units on the eight squares around `index` (W1/W6: either subcell).
+// Friendly Warp-capable units within range of `index` (W1/W6: either subcell).
 export function warpers(state, index, owner) {
-  const r = index >> 3, c = index % 8, found = [];
-  for (const [dr, dc] of directions) {
-    if (!inside(r + dr, c + dc)) continue;
-    const at = (r + dr) * 8 + c + dc;
-    state.board[at].forEach((u, slot) => {
-      if (side(u) === owner && RULES.pieces[code(u)].abilities.some((a) => a.name === "warp")) found.push({ index: at, slot });
+  const found = [];
+  state.board.forEach((sq, at) => {
+    sq.forEach((u, slot) => {
+      const warp = side(u) === owner && at !== index ? RULES.pieces[code(u)].abilities.find((a) => a.name === "warp") : null;
+      if (warp && Math.max(Math.abs((at >> 3) - (index >> 3)), Math.abs((at % 8) - (index % 8))) <= warp.range)
+        found.push({ index: at, slot });
     });
-  }
+  });
   return found;
 }
 
@@ -460,10 +465,11 @@ export function transition(state, action, trusted = false) {
       event.returnFire = true;
     }
   } else if (kind === 3) {
-    event.warped = src[0];
+    event.warped = src[slot];
+    event.warpedSlot = slot;
     event.priestess = warper.index;
     event.priestessSlot = warper.slot;
-    dst.push(...src.splice(0, 1));
+    dst.push(...src.splice(slot, 1));
   }
   next.layout[from] = canonicalLayout(src, next.layout[from]);
   next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst) : canonicalLayout(dst, next.layout[to]);

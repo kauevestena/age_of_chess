@@ -24,9 +24,13 @@ from implementation.age_of_chess.utils import encode_action, decode_action, is_p
 CLASSES = {"Random":RandomAgent,"Greedy":GreedyAgent,"Lookahead":LookaheadAgent}
 _RULES = None
 
-def initialize(path):
+def initialize(path, warp_range=None, warp_breaks=None):
+    """Load the ruleset; optionally override the Priestess's Warp range / formation breaking."""
     global _RULES
     _RULES = load_ruleset(path)
+    ability = next(a for a in _RULES.game.pieces["Q"].abilities if a.name == "warp")
+    if warp_range is not None: ability.range = warp_range
+    if warp_breaks is not None: ability.breaks_formations = warp_breaks
 
 def play(task):
     group,pair_id,name_a,name_b,swap,seed,cap=task
@@ -130,6 +134,8 @@ def main():
     p.add_argument("--max-plies",type=int,default=512)
     p.add_argument("--workers",type=int,default=4)
     p.add_argument("--out",default="implementation/review/results_v6")
+    p.add_argument("--warp-range",type=int,choices=(1,2),default=None,help="override the Warp range")
+    p.add_argument("--warp-breaks",choices=("on","off"),default=None,help="override whether Warp can break formations")
     args=p.parse_args()
     if min(args.pairs,args.search_pairs)<0 or args.max_plies<1: p.error("invalid sample size or cap")
     out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
@@ -143,7 +149,7 @@ def main():
             for swap in (False,True): tasks.append((f"{a} vs {b}",pair,a,b,swap,seed,args.max_plies))
     records=[];traces=[];actions=Counter();deaths=Counter();warps=Counter();warp_rows=[];stacking=0;royal_guards=0
     start=time.monotonic()
-    with ProcessPoolExecutor(max_workers=args.workers,initializer=initialize,initargs=(args.ruleset,)) as pool:
+    with ProcessPoolExecutor(max_workers=args.workers,initializer=initialize,initargs=(args.ruleset,None if args.warp_range is None else args.warp_range,None if args.warp_breaks is None else args.warp_breaks=="on")) as pool:
         for result,detail,trace in pool.map(play,tasks,chunksize=10):
             records.append(result)
             actions.update(detail["actions"]);deaths.update(detail["deaths"]);warps.update(detail["warps"]);warp_rows+=detail["warp_rows"]
@@ -155,7 +161,9 @@ def main():
     with (out/"games.csv").open("w",newline="") as f:
         w=csv.DictWriter(f,fieldnames=list(records[0]) if records else [])
         w.writeheader();w.writerows(records)
-    summary={"rules_version":6,"base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+    warp=next(a for a in load_ruleset(args.ruleset).game.pieces["Q"].abilities if a.name=="warp")
+    summary={"rules_version":6,"warp_range":args.warp_range or warp.range,
+             "warp_breaks_formations":warp.breaks_formations if args.warp_breaks is None else args.warp_breaks=="on","base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
              "source_sha256":source_hash(args.ruleset),"rules_sha256":hashlib.sha256(Path(args.ruleset).read_bytes()).hexdigest(),
              "games":len(records),"plies":sum(r["plies"] for r in records),"max_plies":args.max_plies,
              "invariant_failures":0,"action_codec_failures":0,

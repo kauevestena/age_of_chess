@@ -71,15 +71,15 @@ export const LESSONS = [
   },
   {
     title: "Send them away",
-    text: "Your Priestess on e4 can warp the solitary Cavalry on d4. Select the Priestess, select the Cavalry, then choose c8: a square far from your King's row. Nothing dies and nothing changes sides.",
+    text: "Your Priestess on e4 can warp the Cavalry on c4, two squares away, with no line of sight needed. Select the Priestess, select the Cavalry, then choose c8: a square far from your King's row. Nothing dies and nothing changes sides.",
     state: () =>
       position([
         [36, [5]],
-        [35, [-2]],
+        [34, [-2]],
       ]),
-    action: [4, 3, 0, 0, 2, 3],
+    action: [4, 2, 0, 0, 2, 3],
     success:
-      "The Cavalry now has the whole board to cross again. Warp works on one solitary Pikeman, Cavalry, Archer, or Heavy Infantry beside the Priestess, never on a King, a Priestess, or formation members. Adjacent opposing Priestesses still die together.",
+      "The Cavalry now has the whole board to cross again. A Warp reaches an enemy Pikeman, Cavalry, Archer, or Heavy Infantry within two squares, even one standing in a formation (that breaks the formation). Kings, Priestesses, and any formation that holds a King are safe. Adjacent opposing Priestesses still die together.",
   },
   {
     title: "A guarded front",

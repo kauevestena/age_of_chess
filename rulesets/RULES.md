@@ -233,21 +233,26 @@ single order, it may follow up to three formation rearrangements, and the Priest
 does not move. A Priestess in either slot of a formation may Warp, including as the
 King's escort.
 
-- **Target:** one enemy Pikeman, Cavalry, Archer or Heavy Infantry that is **solitary**
-  and stands on one of the eight squares around the Priestess. Kings, Priestesses,
-  members of any formation and friendly units cannot be warped.
+- **Target:** one enemy Pikeman, Cavalry, Archer or Heavy Infantry standing **within two
+  squares** of the Priestess (Chebyshev distance one or two). No line is needed: other
+  units in between do not matter. If the target stands in a formation, the player names
+  which member (A or B); that member leaves and the other stays behind alone. Kings,
+  Priestesses, any formation that holds a King, and friendly units cannot be warped. In
+  a formation with a Priestess, only the companion can be warped.
 - **Destination:** any **empty** square, chosen by the warping player. There is no range
   or region limit. A square holding any unit is not a destination, even an open one.
 - **Effect:** the target is lifted from its square and set down on the destination as a
   solitary unit. It keeps its owner and class. No combat takes place and nothing dies.
   The Priestess, her companion and their arrangement are unchanged. A warped unit never
-  joins a formation.
+  joins a formation, and a formation that loses a member dissolves.
 - **After the order:** the warping army's two King counters reset, because the order
   belongs to another unit. The turn passes and the position counts for repetition. The
   warped unit's owner moves next, so it may act at once; it moves by the usual rule from
   its new square. A unit placed within two squares of a King puts that King in peril.
 - Warp has no cooldown and no cap. It cannot capture, so it ends a game only through
   stagnation or a third repetition.
+- The range (1 or 2) and formation breaking are settings of the `warp` ability in
+  `default.yaml`; the shipped rules use range two with formation breaking on.
 
 After each normal order, opposing Priestesses in adjacent squares both die
 **simultaneously**, whether A or B. Their companions survive and are
@@ -308,8 +313,8 @@ older saves are rejected rather than reinterpreted. Observations are `(37, 8, 8)
 the first 35 training planes retain their v5 meaning, the four veteran planes are gone,
 and planes 35–36 contain own/enemy consecutive King movement counts divided by four.
 Actions keep nine kinds and 73,728 IDs. Kind 3 is now Warp: `from` is the warped enemy
-unit's square, `slot` is 0, and `to` is the empty destination; the acting Priestess is
-implied because each army has at most one. Retrain older models and keep v6 league
+unit's square, `slot` names the warped member (0 for a solitary unit), and `to` is the
+empty destination; the acting Priestess is implied because each army has at most one. Retrain older models and keep v6 league
 results separate. Legacy internal fields and end reasons containing `commander`
 remain API names for the King; the all-direction limit is `king_move_forfeit`.
 Historical reports describe their original rules.

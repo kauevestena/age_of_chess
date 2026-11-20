@@ -35,7 +35,7 @@ export function evaluate(state) {
 }
 
 /** A Warp adds an order per empty square, so the search keeps only the best few
- * destinations per target: farthest from the warping side's King row, then farthest
+ * destinations per target (one group per warped unit, formation members separately): farthest from the warping side's King row, then farthest
  * from the King itself. Results describe this exile heuristic, not expert Warp play.
  */
 export function capWarps(state, actions, keep = 3) {
@@ -45,7 +45,7 @@ export function capWarps(state, actions, keep = 3) {
   const groups = new Map(), rest = [];
   for (const a of actions) {
     if (a[5] !== 3) rest.push(a);
-    else groups.set(a[0] * 8 + a[1], [...(groups.get(a[0] * 8 + a[1]) || []), a]);
+    else groups.set(a[0] * 16 + a[1] * 2 + a[2], [...(groups.get(a[0] * 16 + a[1] * 2 + a[2]) || []), a]);
   }
   for (const list of groups.values())
     rest.push(...list.sort((x, y) => rank(y) - rank(x) || (x[3] * 8 + x[4]) - (y[3] * 8 + y[4])).slice(0, keep));

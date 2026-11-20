@@ -4,7 +4,8 @@ A simulator-first tactical chess variant with stacking, ranged attacks, Warp,
 class counters and capture-the-King victory. See [the complete rules](rulesets/RULES.md).
 
 **Rules v6:** the Priestess no longer converts; she **warps** an adjacent solitary
-enemy Pikeman, Cavalry, Archer or Heavy Infantry to any empty square. Non-King units
+enemy Pikeman, Cavalry, Archer or Heavy Infantry within two squares to any empty
+square, even one standing in a formation (which breaks it). Non-King units
 now advance toward the **enemy King's row** instead of "forward", which replaces
 sideways steps in the enemy half, the frontal sidestep, the back-rank exception and
 veteran status. While the enemy King sits on his back rank this is ordinary forward
@@ -68,8 +69,8 @@ for agent in env.agent_iter():
 
 The canonical tuple is `(from_row, from_col, slot, to_row, to_col, kind)` everywhere.
 `kind` is move/join=0, melee=1, shoot A=2, warp=3, arrangements=4–7
-(in the order above), or shoot B=8. A warp uses the warped enemy unit's square as `from`, `slot=0` and an empty `to`;
-the Priestess is implied. Preparation actions use the same source and
+(in the order above), or shoot B=8. A warp uses the warped enemy unit's square as `from`, `slot` for the member (0 if solitary)
+and an empty `to`; the Priestess is implied. Preparation actions use the same source and
 target cell and `slot=0`; the selected acting member still determines the shooter.
 There are 73,728 encoded action IDs. Use `encode_action(*action)`
 for the discrete interface. Illegal direct-engine actions raise before mutation;

@@ -1,118 +1,120 @@
 {
   "rules_version": 6,
-  "base_commit": "7faa65f6dffc942f1cc6448eca600a9376490a0e",
-  "source_sha256": "665abebb60c888b7dc12dbeb19e299def23d803ab741468fcfd510fca116ea5a",
-  "rules_sha256": "91f9ed8dde9f316ec48d78e0425b113e0ecc5cdbb0ad2ca5da6a2cf6ffbb716c",
+  "warp_range": 2,
+  "warp_breaks_formations": true,
+  "base_commit": "2838347fafc3f59094083cb28df5a831156a68a7",
+  "source_sha256": "a0e6214353025436b4dcd5ac73d8dfa21667690c6e2b7acf4d9ea2c980bf2f66",
+  "rules_sha256": "3db4a520a8cb2f02a60c0434c9640354ca73e70ad3a43f8a80db84d7cf15a2a5",
   "games": 2000,
-  "plies": 129666,
+  "plies": 141821,
   "max_plies": 256,
   "invariant_failures": 0,
   "action_codec_failures": 0,
   "minimal_loss_turns": 0,
-  "elapsed_seconds": 48.7779787070001,
+  "elapsed_seconds": 59.83738044300003,
   "cohorts": [
     {
       "comparison": "Random vs Random",
       "games": 640,
       "outcomes": {
-        "south": 327,
-        "north": 312,
-        "draw": 1
+        "north": 329,
+        "south": 311
       },
       "reasons": {
         "commander_capture": 537,
-        "king_move_forfeit": 91,
-        "lone_commander": 6,
+        "king_move_forfeit": 89,
         "commander_retreat_forfeit": 5,
-        "both_commanders_alone": 1
+        "lone_commander": 9
       },
-      "mean_plies": 94.4203125,
-      "median_plies": 98.0,
-      "north_score_completed_only": 0.48828125,
+      "mean_plies": 95.8484375,
+      "median_plies": 99.5,
+      "north_score_completed_only": 0.5140625,
       "north_score_bounds_with_unresolved": [
-        0.48828125,
-        0.48828125
+        0.5140625,
+        0.5140625
       ],
       "complete_pairs": 320,
-      "north_score_complete_pairs": 0.48828125,
+      "north_score_complete_pairs": 0.5140625,
       "paired_bootstrap_95pct_complete_pairs": [
-        0.45234375,
-        0.52578125
+        0.478125,
+        0.5515625
       ]
     },
     {
       "comparison": "Greedy vs Greedy",
       "games": 640,
       "outcomes": {
-        "north": 305,
-        "south": 335
+        "north": 313,
+        "south": 319,
+        "draw": 8
       },
       "reasons": {
-        "commander_capture": 634,
-        "lone_commander": 6
+        "commander_capture": 628,
+        "threefold_repetition": 8,
+        "lone_commander": 4
       },
-      "mean_plies": 59.7359375,
-      "median_plies": 60.0,
-      "north_score_completed_only": 0.4765625,
+      "mean_plies": 73.653125,
+      "median_plies": 72.0,
+      "north_score_completed_only": 0.4953125,
       "north_score_bounds_with_unresolved": [
-        0.4765625,
-        0.4765625
+        0.4953125,
+        0.4953125
       ],
       "complete_pairs": 320,
-      "north_score_complete_pairs": 0.4765625,
+      "north_score_complete_pairs": 0.4953125,
       "paired_bootstrap_95pct_complete_pairs": [
-        0.434375,
-        0.5171875
+        0.4546875,
+        0.5328125
       ]
     },
     {
       "comparison": "Greedy vs Random",
       "games": 640,
       "outcomes": {
-        "north": 314,
-        "south": 326
+        "north": 317,
+        "south": 323
       },
       "reasons": {
-        "commander_capture": 632,
+        "commander_capture": 634,
         "lone_commander": 4,
-        "king_move_forfeit": 4
+        "king_move_forfeit": 2
       },
-      "mean_plies": 38.55,
+      "mean_plies": 39.6796875,
       "median_plies": 36.0,
-      "north_score_completed_only": 0.490625,
+      "north_score_completed_only": 0.4953125,
       "north_score_bounds_with_unresolved": [
-        0.490625,
-        0.490625
+        0.4953125,
+        0.4953125
       ],
       "complete_pairs": 320,
-      "north_score_complete_pairs": 0.490625,
+      "north_score_complete_pairs": 0.4953125,
       "paired_bootstrap_95pct_complete_pairs": [
-        0.48125,
-        0.4984375
+        0.4875,
+        0.503125
       ]
     },
     {
       "comparison": "Lookahead vs Greedy",
       "games": 40,
       "outcomes": {
-        "north": 21,
-        "south": 19
+        "north": 20,
+        "south": 20
       },
       "reasons": {
         "commander_capture": 39,
         "lone_commander": 1
       },
-      "mean_plies": 64.275,
-      "median_plies": 66.5,
-      "north_score_completed_only": 0.525,
+      "mean_plies": 79.5,
+      "median_plies": 79.0,
+      "north_score_completed_only": 0.5,
       "north_score_bounds_with_unresolved": [
-        0.525,
-        0.525
+        0.5,
+        0.5
       ],
       "complete_pairs": 20,
-      "north_score_complete_pairs": 0.525,
+      "north_score_complete_pairs": 0.5,
       "paired_bootstrap_95pct_complete_pairs": [
-        0.5,
+        0.425,
         0.575
       ]
     },
@@ -121,85 +123,87 @@
       "games": 40,
       "outcomes": {
         "north": 17,
-        "south": 23
+        "south": 22,
+        "unresolved": 1
       },
       "reasons": {
-        "commander_capture": 35,
+        "commander_capture": 34,
+        "ply_limit": 1,
         "lone_commander": 5
       },
-      "mean_plies": 94.075,
-      "median_plies": 96.5,
-      "north_score_completed_only": 0.425,
+      "mean_plies": 119.125,
+      "median_plies": 114.5,
+      "north_score_completed_only": 0.4358974358974359,
       "north_score_bounds_with_unresolved": [
         0.425,
-        0.425
+        0.45
       ],
-      "complete_pairs": 20,
-      "north_score_complete_pairs": 0.425,
+      "complete_pairs": 19,
+      "north_score_complete_pairs": 0.4473684210526316,
       "paired_bootstrap_95pct_complete_pairs": [
-        0.25,
-        0.6
+        0.2894736842105263,
+        0.6052631578947368
       ]
     }
   ],
   "actions_by_piece_and_kind": {
-    "P:0": 46810,
-    "N:0": 16066,
-    "Q:0": 7832,
-    "B:0": 13343,
-    "P:7": 1129,
-    "R:0": 11812,
-    "P:6": 1847,
-    "N:7": 58,
-    "N:1": 4436,
-    "P:1": 10713,
-    "K:0": 13738,
-    "B:7": 108,
-    "B:5": 97,
-    "P:5": 723,
-    "Q:3": 263,
-    "R:1": 2640,
-    "Q:7": 52,
-    "P:4": 761,
-    "B:1": 712,
-    "R:6": 99,
-    "R:7": 75,
+    "P:0": 51313,
+    "N:0": 16824,
+    "Q:0": 8202,
+    "B:0": 14110,
+    "P:7": 1109,
+    "R:0": 12632,
+    "P:6": 1740,
+    "N:7": 65,
+    "N:1": 4455,
+    "P:1": 9911,
+    "Q:3": 5928,
+    "K:0": 14368,
+    "P:5": 767,
+    "B:5": 105,
+    "R:1": 2223,
+    "B:1": 658,
+    "P:4": 784,
+    "N:6": 65,
+    "R:4": 96,
+    "R:6": 87,
+    "B:6": 142,
+    "B:4": 84,
+    "B:2": 1056,
+    "R:7": 91,
+    "B:7": 122,
+    "K:7": 49,
+    "Q:5": 35,
+    "K:5": 31,
     "R:5": 83,
-    "R:4": 76,
-    "B:2": 1252,
-    "B:6": 135,
-    "K:7": 54,
-    "N:6": 62,
-    "Q:5": 50,
-    "K:5": 28,
-    "K:6": 42,
-    "Q:6": 67,
-    "N:5": 72,
-    "B:4": 72,
-    "B:8": 28,
-    "N:4": 75,
-    "Q:4": 45,
-    "Q:1": 21,
+    "Q:1": 117,
+    "K:6": 43,
+    "Q:6": 58,
+    "Q:7": 59,
+    "N:5": 79,
+    "N:4": 82,
+    "Q:4": 32,
+    "B:8": 24,
     "K:4": 24
   },
   "deaths_by_piece": {
-    "N": 5132,
-    "P": 10577,
-    "Q": 1429,
-    "B": 2700,
-    "K": 1877,
-    "R": 1206
+    "N": 5107,
+    "P": 9492,
+    "Q": 1313,
+    "B": 2589,
+    "K": 1872,
+    "R": 1198
   },
   "warps_by_piece": {
-    "P": 166,
-    "R": 42,
-    "N": 36,
-    "B": 19
+    "P": 4210,
+    "R": 614,
+    "N": 540,
+    "B": 564
   },
-  "warps": 263,
-  "warp_rows_added_mean": 1.4372623574144487,
-  "stacking_moves": 28886,
-  "royal_guard_combats": 171,
+  "warps": 5928,
+  "warp_rows_added_mean": 2.3314777327935223,
+  "stacking_moves": 30916,
+  "royal_guard_combats": 172,
   "versions": {
     "numpy": "2.5.3",
     "pydantic": "2.13.5",

@@ -100,7 +100,7 @@ def test_warp_restrictions_and_stack_order(position):
     assert e.state.board.grid[3][3].is_empty()
     moved=e.state.board.grid[1][6]
     assert moved.top.code=="R" and moved.top.side=="south" and moved.bottom is None
-    for target in ("K","PP","Q"):
+    for target in ("K","PK","Q","KP"):
         e=position([(4,3,"Q","north"),(3,3,target,"south")])
         assert not any(a[-1]==3 for a in e.legal_actions())
 
@@ -182,6 +182,7 @@ def test_seeded_invariants_and_fast_material_score(rules):
             action=rng.choice(legal)
             before=e._material();side=e.state.to_move
             expected=score_action(e,action)
+            if action[5]==3: assert expected>=0; expected=0.0   # Warp: positional credit only, no material swing.
             predicted_deaths=e.immediate_own_deaths(action)
             event=e.apply(action)
             after=e._material();other="south" if side=="north" else "north"

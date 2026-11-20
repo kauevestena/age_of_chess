@@ -64,7 +64,8 @@ game:
         retreat_trigger: adjacent_enemy
       abilities:
         - name: warp
-          range: 1
+          range: 2
+          breaks_formations: true
           targets: [P, N, B, R]
       value: 4
     K:

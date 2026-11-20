@@ -41,14 +41,14 @@ const descriptions = {
   N: "A swift shock unit. Takes one or two steps toward the enemy King's row, passing through an empty square or one ally. Defeats Heavy Infantry and Archers in melee; always loses to Pikemen, even from behind.",
   B: "Fires along any clear straight or diagonal ray, one square. Archers return fire against Archers: both die. Pikemen defeat Archers in melee.",
   R: "The armored heart of an army. Defeats Pikemen and Archers. Always loses to Cavalry in melee, including inside a formation.",
-  Q: "Warps a solitary adjacent enemy Pikeman, Cavalry, Archer, or Heavy Infantry to any empty square. Cannot warp a King, a Priestess, or formation members.",
+  Q: "Warps an enemy Pikeman, Cavalry, Archer, or Heavy Infantry within two squares to any empty square, even one standing in a formation, which breaks it. Cannot warp a King, a Priestess, or any formation that holds a King.",
   K: "The fate of the realm. Unarmed and unable to attack. In formation, the escort fights first against front and flank attacks; matching classes gain defense. Rear exposure still depends on placement. Losing your King ends the battle.",
 };
 let state = initialState(),
   moves = [],
   events = [],
   config = { mode: "solo", difficulty: "knight", humanSide: 1 };
-let warping = null, // enemy unit chosen for Warp; its destination is pending
+let warping = null, // {index, slot} of the enemy unit chosen for Warp; its destination is pending
   selected = null,
   flipped = false,
   busy = false,
@@ -349,7 +349,7 @@ function render() {
   if (!inGame) return;
   const display = displayedState();
   legal = replayPly === null ? legalActions(state) : [];
-  if (warping !== null && !(canAct() && legal.some((a) => a[5] === 3 && a[0] * 8 + a[1] === warping))) warping = null;
+  if (warping !== null && !(canAct() && legal.some((a) => a[5] === 3 && a[0] * 8 + a[1] === warping.index && a[2] === warping.slot))) warping = null;
   $("#battle-mode").textContent =
     tutorial >= 0
       ? "The training ground"
@@ -472,7 +472,7 @@ function renderBoard(display) {
       : [];
   const warpable = warpTargetSet(),
     warpDestinations = warping !== null
-      ? new Set(legal.filter((a) => a[5] === 3 && a[0] * 8 + a[1] === warping).map((a) => a[3] * 8 + a[4]))
+      ? new Set(legal.filter((a) => a[5] === 3 && a[0] * 8 + a[1] === warping.index && a[2] === warping.slot).map((a) => a[3] * 8 + a[4]))
       : new Set();
   const last =
     replayPly === null
@@ -505,7 +505,7 @@ function renderBoard(display) {
         targets.length || warpDestinations.has(i) ? "legal-target" : "",
         warpable.has(i) ? "warp-target" : "",
         warpDestinations.has(i) ? "warp-destination" : "",
-        warping === i ? "warp-chosen" : "",
+        warping?.index === i ? "warp-chosen" : "",
         last && (last.from === i || last.to === i) ? "last-move" : "",
         hint && (hint[0] * 8 + hint[1] === i || hint[3] * 8 + hint[4] === i)
           ? "hint"
@@ -519,7 +519,7 @@ function renderBoard(display) {
           ),
         )
         .join("");
-      return `<button class="${classes}" data-index="${i}" tabindex="${i === activeCell ? 0 : -1}" aria-label="${squareName(i)}, ${unitText}${sq.length ? `, faces rank ${side(sq[0]) > 0 ? 8 : 1}` : ""}${targets.length ? ", legal destination" : ""}${warpable.has(i) ? ", can be warped" : ""}${warpDestinations.has(i) ? ", warp destination" : ""}${warping === i ? ", chosen for Warp" : ""}" aria-pressed="${isSelected}">${sq.length ? `<span class="piece-base"></span><span class="piece-code">${sq.map((u) => code(u)).join("·")}</span><span class="facing-indicator" aria-hidden="true">${side(sq[0]) * (flipped ? -1 : 1) > 0 ? "↑" : "↓"}</span>` : ""}${arts}${sq.length > 1 ? `<span class="stack-badge">${display.layout[i] < 2 ? "N–S" : "E–W"}</span>` : ""}${targets.length ? `<span class="target-marks">${[...new Set(targets.map((a) => a[5]))].map((k) => `<i class="${(isShot(k) ? "range" : ["move", "attack", "range"][k])}-dot"></i>`).join("")}</span>` : warpable.has(i) || warpDestinations.has(i) ? '<span class="target-marks"><i class="faith-dot"></i></span>' : ""}</button>`;
+      return `<button class="${classes}" data-index="${i}" tabindex="${i === activeCell ? 0 : -1}" aria-label="${squareName(i)}, ${unitText}${sq.length ? `, faces rank ${side(sq[0]) > 0 ? 8 : 1}` : ""}${targets.length ? ", legal destination" : ""}${warpable.has(i) ? ", can be warped" : ""}${warpDestinations.has(i) ? ", warp destination" : ""}${warping?.index === i ? ", chosen for Warp" : ""}" aria-pressed="${isSelected}">${sq.length ? `<span class="piece-base"></span><span class="piece-code">${sq.map((u) => code(u)).join("·")}</span><span class="facing-indicator" aria-hidden="true">${side(sq[0]) * (flipped ? -1 : 1) > 0 ? "↑" : "↓"}</span>` : ""}${arts}${sq.length > 1 ? `<span class="stack-badge">${display.layout[i] < 2 ? "N–S" : "E–W"}</span>` : ""}${targets.length ? `<span class="target-marks">${[...new Set(targets.map((a) => a[5]))].map((k) => `<i class="${(isShot(k) ? "range" : ["move", "attack", "range"][k])}-dot"></i>`).join("")}</span>` : warpable.has(i) || warpDestinations.has(i) ? '<span class="target-marks"><i class="faith-dot"></i></span>' : ""}</button>`;
     })
     .join("");
   $("#rank-labels").innerHTML = Array.from(
@@ -556,10 +556,10 @@ function renderSelection(display) {
     `<span>${HOST(side(unit))} · faces rank ${side(unit) > 0 ? 8 : 1} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "B" : "A"} unit at ${POSITIONS[display.layout[selected.index]][selected.slot]}` : ""}</span><br><span>${isSpectating() ? "Spectator view · the AI controls this unit." : side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
   if (code(unit) === "Q" && side(unit) === display.turn && canAct())
     $("#unit-facts").innerHTML += warping !== null
-      ? `<br><strong>Warp · choose an empty square for the ${label(state.board[warping][0])} on ${squareName(warping)}. Escape cancels.</strong>`
+      ? `<br><strong>Warp · choose an empty square for the ${label(state.board[warping.index][warping.slot])} on ${squareName(warping.index)}. Escape cancels.</strong>`
       : warpTargetSet().size
-        ? "<br><strong>Warp ready · select a marked adjacent enemy, then any empty square.</strong>"
-        : "<br><strong>No solitary enemy beside the Priestess to warp.</strong>";
+        ? "<br><strong>Warp ready · select a marked enemy within two squares, then any empty square.</strong>"
+        : "<br><strong>No warpable enemy within two squares of the Priestess.</strong>";
   if (code(unit) === "K") {
     const peril = enemyNear(display, selected.index >> 3, selected.index % 8, side(unit), 2);
     $("#unit-facts").innerHTML += `<br><strong>${peril ? "In peril · backward movement available." : "No nearby enemy · backward movement unavailable."}</strong><br>${sq.length === 2 ? "Royal escort active: front holds; matching flank attackers cancel with the escort. Rear follows placement." : "No escort · the King cannot defend itself."}`;
@@ -594,15 +594,35 @@ function canAct() {
       (config.mode === "solo" && state.turn === config.humanSide))
   );
 }
-// Enemy units the selected Priestess can warp (the action's `from` square is the target).
+// Enemy squares the selected Priestess can warp from, as Map(square -> warpable member slots).
+// The action's `from` square holds the enemy; its `slot` names the member.
 function warpTargetSet() {
   const unit = selected && canAct() && warping === null ? state.board[selected.index]?.[selected.slot] : null;
-  if (!unit || !RULES.pieces[code(unit)].abilities.some((a) => a.name === "warp")) return new Set();
-  return new Set(
-    legal
-      .filter((a) => a[5] === 3 && Math.max(Math.abs(a[0] - (selected.index >> 3)), Math.abs(a[1] - (selected.index % 8))) === 1)
-      .map((a) => a[0] * 8 + a[1]),
+  const ability = unit && RULES.pieces[code(unit)].abilities.find((a) => a.name === "warp");
+  const targets = new Map();
+  if (!ability) return targets;
+  for (const a of legal)
+    if (a[5] === 3 && Math.max(Math.abs(a[0] - (selected.index >> 3)), Math.abs(a[1] - (selected.index % 8))) <= ability.range) {
+      const slots = targets.get(a[0] * 8 + a[1]) || [];
+      if (!slots.includes(a[2])) slots.push(a[2]);
+      targets.set(a[0] * 8 + a[1], slots.sort());
+    }
+  return targets;
+}
+function chooseWarpMember(index, slots) {
+  const sq = state.board[index];
+  openModal(
+    `<p class="eyebrow">Warp · ${squareName(index)}</p><h2 id="modal-title">Which unit?</h2><p>Warping one member breaks the formation; the other stays behind alone.</p>${slots
+      .map((slot) => `<button class="order-option" data-warp-slot="${slot}"><strong>${icon("spark")}${slot ? "B" : "A"} · ${label(sq[slot])} · ${POSITIONS[state.layout[index]][slot]}</strong></button>`)
+      .join("")}`,
   );
+  document.querySelectorAll("[data-warp-slot]").forEach((b) => {
+    b.onclick = () => {
+      closeModal();
+      warping = { index, slot: Number(b.dataset.warpSlot) };
+      render();
+    };
+  });
 }
 function selectCell(index) {
   if (busy || replayPly !== null) return;
@@ -610,20 +630,23 @@ function selectCell(index) {
   hint = null;
   if (canAct() && warping !== null) {
     const from = warping;
-    const action = legal.find((a) => a[5] === 3 && a[0] * 8 + a[1] === from && a[3] * 8 + a[4] === index);
+    const action = legal.find((a) => a[5] === 3 && a[0] * 8 + a[1] === from.index && a[2] === from.slot && a[3] * 8 + a[4] === index);
     warping = null;
     if (action) {
       commit(action);
       return;
     }
-    if (index === from) {
+    if (index === from.index) {
       render();
       return;
     }
   }
-  if (canAct() && selected && warpTargetSet().has(index)) {
-    warping = index;
-    render();
+  const warpSlots = canAct() && selected ? warpTargetSet().get(index) : null;
+  if (warpSlots) {
+    if (warpSlots.length === 1) {
+      warping = { index, slot: warpSlots[0] };
+      render();
+    } else chooseWarpMember(index, warpSlots);
     return;
   }
   if (canAct() && selected) {
@@ -1159,7 +1182,7 @@ function guide(tab = "essentials") {
         "",
       )}</tbody></table></div><div class="guide-prose"><h3>S · Guarded stance</h3><p>For matching ordinary classes: directly ahead (2), defender wins; front diagonals (1, 3), both die; sides and rear (4, 6, 7, 8, 9), attacker wins. Use the starting square in the defender’s facing frame. Class counters take priority from every direction. Formation layout determines contact; only matching ordinary classes receive stance benefits.</p><h3>Formation contact</h3><p>There are no class-counter overrides. A transverse E–W line braces its full front arc (1, 2, 3): both defenders fight, and a matching class meets guarded stance. From its direct rear (8), both are exposed. An N–S column meets flank attacks with both units.</p><p>Other approaches meet the nearest subcell first. A surviving attacker continues against the reserve, which turns to guarded stance. Each duel still obeys the class counter; there is no fatigue penalty. Simultaneous contacts apply both duels’ casualties together. Capturing an encountered King wins even if its companion survives or kills the attacker. A King formation makes a front/flank exception: its escort fights first in every arrangement; matching front attacks lose, matching flank attacks cancel only the attacker and escort. Class counters and rear contact stay unchanged.</p></div>`;
   else
-    content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the King, leave it as the last enemy unit, or force a retreat forfeit to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement toward the enemy King</h3><p>Find the row where the enemy King stands. A unit steps one square onto the next row toward it, straight or diagonally; while the King stays on his back rank this is ordinary forward movement. A unit level with the King may only step sideways toward him, and a unit the King has passed advances back toward him. Cavalry may take two such steps through an empty square or one ally; its second step is chosen afresh, so beside the King’s row it runs along that row. The intermediate ally stays in place. Enemies and full formations block passage; movement stops after combat. To attack, any armed unit may approach from any direction, with Cavalry taking up to two steps. There are no sideways steps in the enemy half, no evasion step and no permanent backward ability: a quiet move always brings a unit closer to the King’s row. A Priestess may step in any direction while an enemy is adjacent. The King advances toward the enemy back rank and may step in any direction when an enemy is within two squares, regardless of blockers. The King can never attack, and is immune to arrows and Warp.</p><h3>Hold the front. Turn the flank.</h3><p>Matching Pikemen, Cavalry, Archers in melee, and Infantry use the defender’s stance. From directly ahead (cell 2), the defender wins; from front diagonals (1 or 3), both die; from the sides or rear (4, 6, 7, 8, 9), the attacker wins. Use the attack’s starting square, even for Cavalry. Formation layout determines which defenders engage. A reserve may turn, but class counters always take priority. Priestesses still cancel, King capture still wins, and class counters remain unchanged.</p><p>Board arrows show facing: Azure faces rank 8; Ember faces rank 1. Facing follows ownership, not the last move. Rotating the board does not change it.</p><h3>Two units. One formation.</h3><p>Move onto one ally to form a company. The resident is A and the arrival B, initially in N–S order with A forward. Either member can act; choose A or B in the unit panel or press B on the board. Before your normal order, rearrange up to three distinct existing formations into any A/B arrangement across N–S or E–W. Each formation may rearrange once; it is optional and never replaces the normal order. A formation created by that order waits until your next turn to rearrange. Moving or losing either member dissolves the formation. Your attacking companion stays behind.</p><h3>The royal escort</h3><p>Any King formation arrangement grants its companion support. Against front or flank attacks (1, 2, 3, 4, 6), the escort fights first. For matching ordinary classes, front diagonals now defend like cell 2, and flank attacks kill both attacker and escort while the King survives. If a class counter defeats the escort and the attacker survives, it reaches the defenseless King. Rear attacks retain physical contact and ready-reserve rules. The King’s rear placement is a recommendation, never a requirement.</p><h3>Arrows and Warp</h3><p>An Archer shoots exactly one square along any straight or diagonal ray. Any occupied square blocks further fire. A shot kills one exposed Pikeman, Archer, or Priestess. The nearer subcell screens the farther one; if both are exposed, choose an eligible target. An ineligible front screen blocks the shot. Two Archers together can also shoot Cavalry and Heavy Infantry, still only one square away. Shooting an Archer causes return fire: both the target and the actual shooter die, including a B-member shooter. Companions survive. Other shots kill only the selected exposed defender. Shooting never moves an Archer and never kills a King.</p><p>A Priestess warps an adjacent solitary Pikeman, Cavalry, Archer, or Heavy Infantry: select the Priestess, then the enemy, then any empty square. The unit is lifted from its square and set down there. Nothing dies and no one changes sides, and the warped unit’s owner moves next. Kings, Priestesses, and formation members cannot be warped. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize King deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>King capture wins first. Three consecutive backward King movements on that army’s turns forfeit; backward diagonals count. Another unit’s order or a non-backward King order resets the streak; the opponent’s turns preserve it. The fourth consecutive King movement in any direction also forfeits. Another unit’s normal order resets both counters; a forward or sideways King move resets only the backward counter. Preparations affect neither counter. Next, an army reduced to its lone King loses; both alone simultaneously is a draw. An army with no legal order loses. The third occurrence of identical physical unit positions, ownership, side to move, and both King counters is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one complete turn in local play. With preparations pending, Undo cancels those preparations first. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
+    content = `<div class="guide-prose"><h3>One order. One unit. One turn.</h3><p>North (Azure) moves first, toward row 0 / rank 8. South (Ember) advances toward rank 1. Choose a unit, then a highlighted destination. Capture the King, leave it as the last enemy unit, or force a retreat forfeit to win. There is no check, checkmate, promotion, castling, or en passant.</p><h3>Movement toward the enemy King</h3><p>Find the row where the enemy King stands. A unit steps one square onto the next row toward it, straight or diagonally; while the King stays on his back rank this is ordinary forward movement. A unit level with the King may only step sideways toward him, and a unit the King has passed advances back toward him. Cavalry may take two such steps through an empty square or one ally; its second step is chosen afresh, so beside the King’s row it runs along that row. The intermediate ally stays in place. Enemies and full formations block passage; movement stops after combat. To attack, any armed unit may approach from any direction, with Cavalry taking up to two steps. There are no sideways steps in the enemy half, no evasion step and no permanent backward ability: a quiet move always brings a unit closer to the King’s row. A Priestess may step in any direction while an enemy is adjacent. The King advances toward the enemy back rank and may step in any direction when an enemy is within two squares, regardless of blockers. The King can never attack, and is immune to arrows and Warp.</p><h3>Hold the front. Turn the flank.</h3><p>Matching Pikemen, Cavalry, Archers in melee, and Infantry use the defender’s stance. From directly ahead (cell 2), the defender wins; from front diagonals (1 or 3), both die; from the sides or rear (4, 6, 7, 8, 9), the attacker wins. Use the attack’s starting square, even for Cavalry. Formation layout determines which defenders engage. A reserve may turn, but class counters always take priority. Priestesses still cancel, King capture still wins, and class counters remain unchanged.</p><p>Board arrows show facing: Azure faces rank 8; Ember faces rank 1. Facing follows ownership, not the last move. Rotating the board does not change it.</p><h3>Two units. One formation.</h3><p>Move onto one ally to form a company. The resident is A and the arrival B, initially in N–S order with A forward. Either member can act; choose A or B in the unit panel or press B on the board. Before your normal order, rearrange up to three distinct existing formations into any A/B arrangement across N–S or E–W. Each formation may rearrange once; it is optional and never replaces the normal order. A formation created by that order waits until your next turn to rearrange. Moving or losing either member dissolves the formation. Your attacking companion stays behind.</p><h3>The royal escort</h3><p>Any King formation arrangement grants its companion support. Against front or flank attacks (1, 2, 3, 4, 6), the escort fights first. For matching ordinary classes, front diagonals now defend like cell 2, and flank attacks kill both attacker and escort while the King survives. If a class counter defeats the escort and the attacker survives, it reaches the defenseless King. Rear attacks retain physical contact and ready-reserve rules. The King’s rear placement is a recommendation, never a requirement.</p><h3>Arrows and Warp</h3><p>An Archer shoots exactly one square along any straight or diagonal ray. Any occupied square blocks further fire. A shot kills one exposed Pikeman, Archer, or Priestess. The nearer subcell screens the farther one; if both are exposed, choose an eligible target. An ineligible front screen blocks the shot. Two Archers together can also shoot Cavalry and Heavy Infantry, still only one square away. Shooting an Archer causes return fire: both the target and the actual shooter die, including a B-member shooter. Companions survive. Other shots kill only the selected exposed defender. Shooting never moves an Archer and never kills a King.</p><p>A Priestess warps an enemy Pikeman, Cavalry, Archer, or Heavy Infantry within two squares, with no line of sight needed: select the Priestess, then the enemy (and which member, if it stands in a formation), then any empty square. The unit is lifted from its square and set down there. Nothing dies and no one changes sides, and the warped unit’s owner moves next. A formation member can be warped, which breaks the formation and leaves the other member alone, but Kings, Priestesses, and any formation that holds a King cannot. Adjacent opposing Priestesses die simultaneously after any action, even inside formations; their companions survive.</p><h3>The cost of an order</h3><p>Combat is deterministic. Attack previews list immediate casualties, including sacrifices. If every available order kills one of your own units during that order, you must minimize King deaths, then total own deaths, then losses in the order Infantry, Cavalry, Archer, Pikeman, Priestess. Otherwise sacrifices are freely allowed.</p><h3>When the battle ends</h3><p>King capture wins first. Three consecutive backward King movements on that army’s turns forfeit; backward diagonals count. Another unit’s order or a non-backward King order resets the streak; the opponent’s turns preserve it. The fourth consecutive King movement in any direction also forfeits. Another unit’s normal order resets both counters; a forward or sideways King move resets only the backward counter. Preparations affect neither counter. Next, an army reduced to its lone King loses; both alone simultaneously is a draw. An army with no legal order loses. The third occurrence of identical physical unit positions, ownership, side to move, and both King counters is a draw. There is no turn limit or material-based adjudication in browser play.</p><h3>Command at your pace</h3><p>Undo reverses your whole turn and the computer’s reply in solo play, or one complete turn in local play. With preparations pending, Undo cancels those preparations first. Battle chronicle → Review lets you step through the saved game. Save downloads a portable game file; Load a game restores it. Games also save automatically on this device when storage is available. Cinematics can be skipped with Escape, shortened in Settings, or reduced with your device’s motion preference.</p></div>`;
   if (tab === "essentials")
     content += `<div class="guide-prose"><h3>Watch the commanders</h3><p>Choose Watch a battle in the war camp to let two AI armies play. Select Squire, Knight, or Marshal independently for each banner. Pause stops the next order; during a cinematic, Pause after this order lets the current encounter finish. Next order advances one turn while paused. Pace changes the interval between turns, while Settings controls animation length. You can inspect units, save, or review the chronicle while paused. Restored spectator games and returning from review stay paused until Resume. Switching to another tab also pauses playback.</p></div>`;
   openModal(

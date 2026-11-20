@@ -148,16 +148,18 @@ class Engine:
                 sq.layout = canonical_layout(sq.top, sq.bottom, sq.layout)
 
     def _warper(self, r, c, side):
-        """(row, col, slot) of a friendly Warp-capable unit adjacent to (r, c)."""
-        warpers = {code for code, piece in self.rules.game.pieces.items()
+        """(row, col, slot) of a friendly Warp-capable unit within range of (r, c)."""
+        warpers = {code: next(a.range for a in piece.abilities if a.name == "warp")
+                   for code, piece in self.rules.game.pieces.items()
                    if any(a.name == "warp" for a in piece.abilities)}
-        for rr in range(max(0, r-1), min(8, r+2)):
-            for cc in range(max(0, c-1), min(8, c+2)):
+        for rr in range(8):
+            for cc in range(8):
                 if (rr, cc) != (r, c):
                     for slot, unit in enumerate((self.state.board.grid[rr][cc].top, self.state.board.grid[rr][cc].bottom)):
-                        if unit and unit.side == side and unit.code in warpers:
+                        if (unit and unit.side == side and unit.code in warpers
+                                and max(abs(rr-r), abs(cc-c)) <= warpers[unit.code]):
                             return rr, cc, slot
-        raise ValueError("No adjacent Warp-capable unit")
+        raise ValueError("No Warp-capable unit in range")
 
     def _priestess_deaths(self, losses):
         queens = [(r, c, slot, u) for r, row in enumerate(self.state.board.grid)
@@ -282,10 +284,10 @@ class Engine:
                 remove(src, "bottom" if slot else "top", "return_fire")
                 event["ranged"]["return_fire"] = True
         elif kind == 3:
-            unit = src.remove_unit("top")
+            unit = src.remove_unit("bottom" if slot else "top")
             dst.add_unit(unit)
             event["warp"] = {"unit": unit.code, "owner": unit.side, "from": (fr, fc), "to": (tr, tc),
-                             "priestess": priestess[:2], "priestess_slot": priestess[2]}
+                             "slot": slot, "priestess": priestess[:2], "priestess_slot": priestess[2]}
         self._priestess_deaths(event["losses"])
         self._canonicalize_layouts()
         backward = kind != 3 and (tr-fr) * (1 if side == "north" else -1) > 0

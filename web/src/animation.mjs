@@ -338,7 +338,7 @@ export class CombatDirector {
     ghost.style.cssText = `left:${from.x}px;top:${from.y - from.height * 0.08}px;width:${from.width}px;height:${from.height * 1.05}px;`;
     ghost.innerHTML = unitSVG(event.warped);
     document.body.append(ghost);
-    const art = source.querySelector('[data-slot="0"]');
+    const art = source.querySelector(`[data-slot="${event.warpedSlot ?? 0}"]`);
     if (art) {
       art.style.visibility = "hidden";
       art.classList.add("animation-hidden");

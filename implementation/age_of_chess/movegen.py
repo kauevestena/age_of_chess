@@ -122,17 +122,27 @@ def gen_single_moves(state, rules):
 
                 for ability in spec.abilities:
                     if ability.name == "warp":
-                        # W2/W3: one adjacent solitary enemy unit to any empty square.
-                        for dr, dc in ALL_DIRS:
-                            rr, cc = r+dr, c+dc
-                            if not in_bounds(rr, cc, rows, cols): continue
-                            target = state.board.grid[rr][cc]
-                            if (target.top and target.top.side != side and target.bottom is None
-                                    and target.top.code in ability.targets):
-                                if empties is None:
-                                    empties = empty_squares(state)
-                                for er, ec in empties:
-                                    actions.add((rr, cc, 0, er, ec, 3))
+                        # W2/W3: an enemy unit within range (no line needed) to any empty square.
+                        # A formation member may be warped when the ability breaks formations,
+                        # unless the formation holds a King. The action's slot names the member.
+                        for rr in range(max(0, r-ability.range), min(rows, r+ability.range+1)):
+                            for cc in range(max(0, c-ability.range), min(cols, c+ability.range+1)):
+                                target = state.board.grid[rr][cc]
+                                if (rr, cc) == (r, c) or not target.top or target.top.side == side:
+                                    continue
+                                if target.bottom is None:
+                                    slots = [0]
+                                elif ability.breaks_formations and "K" not in (target.top.code, target.bottom.code):
+                                    slots = [0, 1]
+                                else:
+                                    continue
+                                for target_slot in slots:
+                                    if (target.top, target.bottom)[target_slot].code not in ability.targets:
+                                        continue
+                                    if empties is None:
+                                        empties = empty_squares(state)
+                                    for er, ec in empties:
+                                        actions.add((rr, cc, target_slot, er, ec, 3))
                     else:
                         if ability.requires_stack_size == 2 and not (
                             sq.top and sq.bottom and sq.top.code == sq.bottom.code == "B"):

@@ -140,9 +140,10 @@ Audio activation follows [Web Audio best practices](https://developer.mozilla.or
 
 ## Rules v6 Warp, the King's row and compatibility
 
-The Priestess warps instead of converting: select her, select a marked adjacent
-solitary enemy, then choose any empty square. Nothing dies and nothing changes sides.
-Kings, Priestesses and formation members cannot be warped. The effect plays on the
+The Priestess warps instead of converting: select her, select a marked enemy within two
+squares (no line of sight needed), then choose any empty square. A formation member can
+be warped too: a dialog asks which one, and the formation breaks. Nothing dies and nothing
+changes sides. Kings, Priestesses and formations that hold a King cannot be warped. The effect plays on the
 board as a ring of light rather than a cinematic encounter.
 
 Non-King units advance toward the row where the enemy King stands, straight or
@@ -154,7 +155,7 @@ movement streaks: the third backward move or fourth King move forfeits.
 
 Three tutorial lessons were replaced (Warp, level with the King, follow the King);
 the tutorial still has 18 exercises. The browser AI searches only the best three Warp
-destinations per target (farthest from its King's row) to keep the search bounded.
+destinations per warpable unit (farthest from its King's row) to keep the search bounded.
 
 See [the validation and 2,000-game simulation review](review/WARP_V6.md).
 

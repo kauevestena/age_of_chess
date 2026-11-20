@@ -186,41 +186,104 @@ test("Priestess contact step and King peril are unchanged; the King ignores the 
 const WARP = [[sq(4, 3), [5]], [sq(7, 4), [6]], [sq(7, 0), [1]], [sq(3, 3), [-1]], [sq(3, 4), [-4]],
   [sq(4, 2), [-1, -1]], [sq(0, 4), [-6]], [sq(0, 0), [-3]]];
 
-test("spec Warp example: 112 legal Warps, formations immune", () => {
-  const s = setup(WARP);
-  const warps = legalActions(s).filter((m) => m[5] === 3);
-  assert.equal(warps.length, 112);
-  assert.deepEqual([...new Set(warps.map((m) => m[0] * 8 + m[1]))].sort((x, y) => x - y), [sq(3, 3), sq(3, 4)]);
-  assert(warps.every((m) => m[2] === 0 && !s.board[m[3] * 8 + m[4]].length));
-  const out = transition(s, [3, 4, 0, 0, 7, 3]);
-  assert.deepEqual(out.state.board[sq(3, 4)], []);
-  assert.deepEqual(out.state.board[sq(0, 7)], [-4]);
-  assert.equal(out.state.turn, -1);
-  assert.deepEqual(quiet(out.state, sq(0, 7)), cells([1, 6], [1, 7]));
-  assert.deepEqual(out.event.warped, -4);
-  assert.deepEqual(out.event.losses, []);
-  assert.equal(out.event.priestess, sq(4, 3));
+// Run a body with the Priestess's Warp settings changed, restoring the shipped rules after.
+function withWarp(range, breaks, body) {
+  const ability = RULES.pieces.Q.abilities[0], saved = [ability.range, ability.breaks_formations];
+  [ability.range, ability.breaks_formations] = [range, breaks];
+  try { body(); } finally { [ability.range, ability.breaks_formations] = saved; }
+}
+const warpSources = (s) => [...new Set(legalActions(s).filter((m) => m[5] === 3).map((m) => `${m[0]},${m[1]},${m[2]}`))].sort();
+
+test("shipped Warp has range two and breaks formations", () => {
+  const ability = RULES.pieces.Q.abilities[0];
+  assert.equal(ability.range, 2);
+  assert.equal(ability.breaks_formations, true);
 });
 
-test("Warp targets: not Kings, stacks, friends or distant units; occupied squares are no destination", () => {
-  for (const [target, at] of [[[-6], sq(3, 3)], [[-1, -1], sq(3, 3)], [[-2, -3], sq(3, 3)], [[1], sq(3, 3)], [[-4], sq(2, 3)]]) {
-    const s = setup([[sq(4, 3), [5]], [at, target], ...(target[0] === -6 ? [] : [[sq(0, 7), [-6]]]), [63, [6]]]);
+test("spec Warp example with the original limits: 112 legal Warps", () => {
+  withWarp(1, false, () => {
+    const s = setup(WARP);
+    const warps = legalActions(s).filter((m) => m[5] === 3);
+    assert.equal(warps.length, 112);
+    assert.deepEqual(warpSources(s), [`3,3,0`, `3,4,0`]);
+    assert(warps.every((m) => m[2] === 0 && !s.board[m[3] * 8 + m[4]].length));
+    const out = transition(s, [3, 4, 0, 0, 7, 3]);
+    assert.deepEqual(out.state.board[sq(3, 4)], []);
+    assert.deepEqual(out.state.board[sq(0, 7)], [-4]);
+    assert.equal(out.state.turn, -1);
+    assert.deepEqual(quiet(out.state, sq(0, 7)), cells([1, 6], [1, 7]));
+    assert.deepEqual(out.event.warped, -4);
+    assert.deepEqual(out.event.losses, []);
+    assert.equal(out.event.priestess, sq(4, 3));
+  });
+});
+
+test("range two with formation breaking: the example offers four targets", () => {
+  const s = setup(WARP);
+  assert.deepEqual(warpSources(s), ["3,3,0", "3,4,0", "4,2,0", "4,2,1"]);
+  assert.equal(legalActions(s).filter((m) => m[5] === 3).length, 4 * 56);
+  const far = setup([[sq(4, 3), [5]], [sq(2, 3), [-4]], [sq(1, 3), [-1]], [sq(0, 7), [-6]], [63, [6]]]);
+  assert.deepEqual(warpSources(far), ["2,3,0"]);
+});
+
+test("range and formation settings behave independently", () => {
+  for (const [range, breaks] of [[1, false], [1, true], [2, false], [2, true]])
+    withWarp(range, breaks, () => {
+      const base = [[sq(4, 3), [5]], [sq(0, 7), [-6]], [63, [6]]];
+      assert.deepEqual(warpSources(setup([...base, [sq(3, 3), [-1]]])), ["3,3,0"]);
+      assert.equal(warpSources(setup([...base, [sq(2, 3), [-1]]])).length, range === 2 ? 1 : 0);
+      assert.equal(warpSources(setup([...base, [sq(1, 3), [-1]]])).length, 0);
+      assert.deepEqual(warpSources(setup([...base, [sq(3, 3), [-3, -1]]])), breaks ? ["3,3,0", "3,3,1"] : []);
+    });
+});
+
+test("Warp needs no line of sight, and King formations are immune", () => {
+  const s = setup([[sq(4, 3), [5]], [sq(3, 3), [1]], [sq(2, 3), [-2]], [sq(0, 7), [-6]], [63, [6]]]);
+  assert.deepEqual(warpSources(s), ["2,3,0"]);
+  for (const stack of [[-1, -6], [-6, -1], [-4, -6], [-6, -4]]) {
+    const board = [[sq(4, 3), [5]], [sq(3, 3), stack], [63, [6]], [sq(0, 0), [-1]]];
+    assert.deepEqual(warpSources(setup(board)), []);
+  }
+});
+
+test("other immunities remain: Kings, friends, Priestess members and occupied destinations", () => {
+  const base = [[63, [6]], [sq(0, 0), [-1]]];
+  for (const [target, at] of [[[-6], sq(3, 3)], [[1], sq(3, 3)], [[-4], sq(1, 3)]]) {
+    const s = setup([[sq(4, 3), [5]], [at, target], ...(target[0] === -6 ? [] : [[sq(0, 7), [-6]]]), ...base]);
     assert(!legalActions(s).some((m) => m[5] === 3 && m[0] * 8 + m[1] === at), JSON.stringify(target));
   }
+  const queenPair = [[sq(4, 3), [5]], [sq(2, 3), [-1, -5]], [sq(0, 7), [-6]], ...base];
+  const board = Array.from({ length: 64 }, () => []);
+  for (const [i, units] of queenPair) board[i] = units;
+  const state = { ...initialState(), board, layout: board.map(() => -1), turn: 1, winner: null, counts: {} };
+  assert.deepEqual([...new Set(legalActions(state).filter((m) => m[5] === 3).map((m) => `${m[0]},${m[1]},${m[2]}`))], ["2,3,0"]);
   const s = setup([[sq(4, 3), [5]], [sq(3, 3), [-4]], [sq(3, 5), [-1]], [sq(6, 6), [1]], [sq(0, 7), [-6]], [63, [6]]]);
   const destinations = new Set(legalActions(s).filter((m) => m[5] === 3).map((m) => m[3] * 8 + m[4]));
-  for (const blocked of [sq(3, 5), sq(6, 6), sq(3, 3)]) assert(!destinations.has(blocked));
+  for (const blocked of [sq(3, 5), sq(6, 6), sq(3, 3), sq(4, 3)]) assert(!destinations.has(blocked));
+});
+
+test("breaking a formation leaves a singleton with no layout", () => {
+  for (const slot of [0, 1]) {
+    const s = setup([[sq(4, 3), [5]], [sq(3, 2), [-2, -3]], [sq(0, 7), [-6]], [63, [6]], [sq(0, 0), [-1]]]);
+    const out = transition(s, [3, 2, slot, 7, 2, 3]);
+    assert.deepEqual(out.state.board[sq(3, 2)], [slot ? -2 : -3]);
+    assert.deepEqual(out.state.board[sq(7, 2)], [slot ? -3 : -2]);
+    assert.equal(out.state.layout[sq(3, 2)], -1);
+    assert.equal(out.event.warpedSlot, slot);
+    assert.deepEqual(out.event.losses, []);
+    validateState(out.state);
+  }
 });
 
 test("Warp from either subcell, including the King's escort", () => {
   for (const pair of [[5, 1], [1, 5], [5, 6], [6, 5]]) {
-    const units = [[sq(4, 3), pair], [sq(3, 3), [-3]], [sq(0, 7), [-6]], [sq(0, 0), [-1]]];
+    const units = [[sq(4, 3), pair], [sq(2, 3), [-3]], [sq(0, 7), [-6]], [sq(0, 0), [-1]]];
     if (!pair.includes(6)) units.push([63, [6]]);
     const s = setup(units);
-    assert(legalActions(s).some((m) => m[5] === 3 && m[0] === 3 && m[1] === 3), pair.join());
-    const next = transition(s, legalActions(s).find((m) => m[5] === 3 && m[0] === 3 && m[1] === 3)).state;
+    assert(legalActions(s).some((m) => m[5] === 3 && m[0] === 2 && m[1] === 3), pair.join());
+    const next = transition(s, legalActions(s).find((m) => m[5] === 3 && m[0] === 2 && m[1] === 3)).state;
     assert.deepEqual(next.board[sq(4, 3)], pair);
-    assert.deepEqual(next.board[sq(3, 3)], []);
+    assert.deepEqual(next.board[sq(2, 3)], []);
   }
 });
 
@@ -261,10 +324,11 @@ test("the browser search keeps only a few Warp destinations per target", () => {
   const s = setup(WARP);
   const capped = capWarps(s, legalOrders(s));
   const warps = capped.filter((m) => m[5] === 3);
-  assert.equal(warps.length, 6);
+  assert.equal(warps.length, 12); // Four warpable units (a formation counts per member), three each.
   // North's King is on row 7, so the exile squares are on the far row 0 (rank 8 is row 0).
   assert(warps.every((m) => m[3] === 0));
   assert.equal(new Set(warps.filter((m) => m[0] === 3 && m[1] === 3).map((m) => m[4])).size, 3);
+  assert.equal(new Set(warps.filter((m) => m[0] === 4 && m[1] === 2).map((m) => m[2])).size, 2);
 });
 
 test("rules metadata and state have no veteran or conversion left", () => {

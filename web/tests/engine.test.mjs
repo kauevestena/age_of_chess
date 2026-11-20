@@ -149,7 +149,6 @@ test("Warp is solitary, moves the target to an empty square and leaves the Pries
     [35, [-2]],
     [28, [-3, -1]],
   ]);
-  assert(!has(s, a(28, 16, 3)), "formation members are immune");
   assert(!has(s, a(35, 28, 3)), "occupied destinations are not allowed");
   const out = transition(s, a(35, 16, 3));
   assert.deepEqual(out.state.board[36], [1, 5]);
@@ -157,6 +156,12 @@ test("Warp is solitary, moves the target to an empty square and leaves the Pries
   assert.deepEqual(out.state.board[16], [-2]);
   assert.deepEqual(out.event.losses, []);
   assert.equal(out.state.turn, -1);
+  // Formation members can be warped one at a time; the other stays behind alone.
+  const broken = transition(s, a(28, 16, 3, 1));
+  assert.deepEqual(broken.state.board[28], [-3]);
+  assert.deepEqual(broken.state.board[16], [-1]);
+  assert.equal(broken.state.layout[28], -1);
+  assert.equal(broken.event.warpedSlot, 1);
 });
 test("opposing Priestesses die simultaneously, including bottom slots", () => {
   const s = setup([

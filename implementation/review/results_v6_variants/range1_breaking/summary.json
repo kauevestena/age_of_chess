@@ -1,0 +1,220 @@
+{
+  "rules_version": 6,
+  "warp_range": 1,
+  "warp_breaks_formations": true,
+  "base_commit": "2838347fafc3f59094083cb28df5a831156a68a7",
+  "source_sha256": "a0e6214353025436b4dcd5ac73d8dfa21667690c6e2b7acf4d9ea2c980bf2f66",
+  "rules_sha256": "3db4a520a8cb2f02a60c0434c9640354ca73e70ad3a43f8a80db84d7cf15a2a5",
+  "games": 2000,
+  "plies": 130956,
+  "max_plies": 256,
+  "invariant_failures": 0,
+  "action_codec_failures": 0,
+  "minimal_loss_turns": 0,
+  "elapsed_seconds": 49.71307321200004,
+  "cohorts": [
+    {
+      "comparison": "Random vs Random",
+      "games": 640,
+      "outcomes": {
+        "south": 325,
+        "north": 314,
+        "draw": 1
+      },
+      "reasons": {
+        "commander_capture": 532,
+        "king_move_forfeit": 95,
+        "lone_commander": 6,
+        "commander_retreat_forfeit": 6,
+        "both_commanders_alone": 1
+      },
+      "mean_plies": 94.565625,
+      "median_plies": 99.0,
+      "north_score_completed_only": 0.49140625,
+      "north_score_bounds_with_unresolved": [
+        0.49140625,
+        0.49140625
+      ],
+      "complete_pairs": 320,
+      "north_score_complete_pairs": 0.49140625,
+      "paired_bootstrap_95pct_complete_pairs": [
+        0.4546875,
+        0.5296875
+      ]
+    },
+    {
+      "comparison": "Greedy vs Greedy",
+      "games": 640,
+      "outcomes": {
+        "north": 316,
+        "south": 324
+      },
+      "reasons": {
+        "commander_capture": 632,
+        "lone_commander": 8
+      },
+      "mean_plies": 61.7546875,
+      "median_plies": 61.0,
+      "north_score_completed_only": 0.49375,
+      "north_score_bounds_with_unresolved": [
+        0.49375,
+        0.49375
+      ],
+      "complete_pairs": 320,
+      "north_score_complete_pairs": 0.49375,
+      "paired_bootstrap_95pct_complete_pairs": [
+        0.453125,
+        0.534375
+      ]
+    },
+    {
+      "comparison": "Greedy vs Random",
+      "games": 640,
+      "outcomes": {
+        "north": 315,
+        "south": 325
+      },
+      "reasons": {
+        "commander_capture": 634,
+        "king_move_forfeit": 4,
+        "lone_commander": 2
+      },
+      "mean_plies": 38.4171875,
+      "median_plies": 36.0,
+      "north_score_completed_only": 0.4921875,
+      "north_score_bounds_with_unresolved": [
+        0.4921875,
+        0.4921875
+      ],
+      "complete_pairs": 320,
+      "north_score_complete_pairs": 0.4921875,
+      "paired_bootstrap_95pct_complete_pairs": [
+        0.4828125,
+        0.5015625
+      ]
+    },
+    {
+      "comparison": "Lookahead vs Greedy",
+      "games": 40,
+      "outcomes": {
+        "north": 22,
+        "south": 18
+      },
+      "reasons": {
+        "commander_capture": 40
+      },
+      "mean_plies": 63.8,
+      "median_plies": 65.0,
+      "north_score_completed_only": 0.55,
+      "north_score_bounds_with_unresolved": [
+        0.55,
+        0.55
+      ],
+      "complete_pairs": 20,
+      "north_score_complete_pairs": 0.55,
+      "paired_bootstrap_95pct_complete_pairs": [
+        0.5,
+        0.625
+      ]
+    },
+    {
+      "comparison": "Lookahead vs Lookahead",
+      "games": 40,
+      "outcomes": {
+        "north": 18,
+        "south": 22
+      },
+      "reasons": {
+        "commander_capture": 37,
+        "lone_commander": 3
+      },
+      "mean_plies": 94.3,
+      "median_plies": 98.5,
+      "north_score_completed_only": 0.45,
+      "north_score_bounds_with_unresolved": [
+        0.45,
+        0.45
+      ],
+      "complete_pairs": 20,
+      "north_score_complete_pairs": 0.45,
+      "paired_bootstrap_95pct_complete_pairs": [
+        0.325,
+        0.6
+      ]
+    }
+  ],
+  "actions_by_piece_and_kind": {
+    "P:0": 47259,
+    "N:0": 16090,
+    "Q:0": 7875,
+    "B:0": 13397,
+    "P:7": 1123,
+    "R:0": 12057,
+    "P:6": 1828,
+    "N:7": 61,
+    "N:1": 4433,
+    "P:1": 10642,
+    "K:0": 13913,
+    "B:7": 109,
+    "B:5": 98,
+    "P:5": 717,
+    "Q:3": 709,
+    "R:1": 2576,
+    "Q:7": 50,
+    "P:4": 766,
+    "B:1": 707,
+    "R:6": 98,
+    "R:7": 80,
+    "R:5": 81,
+    "R:4": 73,
+    "B:2": 1238,
+    "B:6": 134,
+    "K:7": 54,
+    "N:6": 63,
+    "Q:5": 42,
+    "K:5": 29,
+    "K:6": 42,
+    "Q:6": 68,
+    "N:5": 73,
+    "B:4": 69,
+    "B:8": 29,
+    "N:4": 75,
+    "Q:4": 41,
+    "Q:1": 31,
+    "K:4": 21
+  },
+  "deaths_by_piece": {
+    "N": 5136,
+    "P": 10525,
+    "Q": 1377,
+    "B": 2711,
+    "K": 1875,
+    "R": 1197
+  },
+  "warps_by_piece": {
+    "P": 466,
+    "R": 142,
+    "N": 63,
+    "B": 38
+  },
+  "warps": 709,
+  "warp_rows_added_mean": 2.6304654442877293,
+  "stacking_moves": 29102,
+  "royal_guard_combats": 163,
+  "versions": {
+    "numpy": "2.5.3",
+    "pydantic": "2.13.5",
+    "pyyaml": "6.0.3",
+    "pettingzoo": "1.27.0",
+    "gymnasium": "1.4.0"
+  },
+  "limitations": [
+    "All games use the standard opening, no human or trained expert agents.",
+    "Lookahead searches two plies: eight root candidates and every opponent reply's immediate material swing.",
+    "Bootstrap resamples complete color-swapped seed pairs; incomplete-pair selection can bias estimates.",
+    "Unresolved bounds assign capped games score 0 or 1; truncation is not a draw.",
+    "Greedy and Lookahead prepare defensively after selecting a normal order; neither searches full compound turns.",
+    "Piece event counts measure policy usage, not causal piece value or expert balance.",
+    "Warp destinations follow a fixed exile heuristic (see agents.best_warp), not expert Warp play."
+  ]
+}

@@ -84,7 +84,7 @@ The 37-plane observation encodes A/B classes, arrangements, preparations, remain
 budget and both King movement/retreat counters; full repetition history is in infos. Actions use
 nine kinds (73,728 IDs). A preparation keeps the current player and pays zero reward;
 the normal order ends that turn. Opponent wrappers finish all preparations before
-returning control. Greedy uses a bounded defensive preparation planner. Random, Greedy and Lookahead treat all Warps of one target as a single option; Greedy and Lookahead exile the unit to the square farthest from their King's row (`agents.best_warp`).
+returning control. Greedy uses a bounded defensive preparation planner. Random, Greedy and Lookahead treat all Warps of one target (and member) as a single option; Greedy and Lookahead exile the unit to the square farthest from their King's row (`agents.best_warp`) and credit a Warp with `WARP_WEIGHT` × the unit's value per row gained, always below a Pikeman capture.
 
 Core `RandomAgent`/`GreedyAgent` receive an Engine and return action tuples. The
 league's policy interface receives the AEC environment and returns an encoded ID.

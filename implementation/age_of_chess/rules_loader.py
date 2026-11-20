@@ -23,9 +23,10 @@ class MoveSpec(StrictModel):
 
 class AbilitySpec(StrictModel):
     name: Literal["ranged", "power_shot", "warp"]
-    range: Literal[1]
+    range: Literal[1, 2]
     targets: list[str]
     requires_stack_size: int = Field(default=1, ge=1, le=2)
+    breaks_formations: bool = False
 
     @model_validator(mode="after")
     def targets_valid(self):
@@ -33,8 +34,10 @@ class AbilitySpec(StrictModel):
             raise ValueError("unknown ability target")
         if "K" in self.targets or (self.name == "warp" and "Q" in self.targets):
             raise ValueError("Kings cannot be shot/warped; Priestesses cannot be warped")
-        if self.name == "warp" and (self.range != 1 or self.requires_stack_size != 1):
-            raise ValueError("warp is an adjacent single-unit ability")
+        if self.name != "warp" and (self.range != 1 or self.breaks_formations):
+            raise ValueError("arrows reach one square; only warp has a range setting or breaks formations")
+        if self.name == "warp" and self.requires_stack_size != 1:
+            raise ValueError("warp is performed by a single Priestess")
         if self.name == "power_shot" and self.requires_stack_size != 2:
             raise ValueError("power shot requires two Archers")
         return self

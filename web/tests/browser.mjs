@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { spectatorChecks } from "./spectator.mjs";
 import { formationChecks } from "./formations-browser.mjs";
+import { warpChecks } from "./warp-browser.mjs";
 import { createRecord, SAVE_KEY } from "../src/records.mjs";
 const require = createRequire(import.meta.url),
   { chromium } = require("playwright");
@@ -216,15 +217,15 @@ try {
   );
   await page.locator("#next-lesson").click();
   // Warp: Priestess is preselected; the enemy is marked, then any empty square is offered.
-  check((await cell(page, 35).getAttribute("class")).includes("warp-target"), "Warp marks the adjacent solitary enemy");
-  await cell(page, 35).click();
+  check((await cell(page, 34).getAttribute("class")).includes("warp-target"), "Warp marks an enemy two squares away");
+  await cell(page, 34).click();
   check((await cell(page, 2).getAttribute("class")).includes("warp-destination"), "Warp offers empty destination squares");
   check(!(await cell(page, 36).getAttribute("class")).includes("warp-destination"), "occupied squares are no Warp destination");
   await page.screenshot({ path: resolve(out, "warp-destination.png") });
   await cell(page, 2).click();
   await waitIdle(page);
   check(
-    (await cell(page, 35).getAttribute("aria-label")).includes("empty") &&
+    (await cell(page, 34).getAttribute("aria-label")).includes("empty") &&
       (await cell(page, 2).getAttribute("aria-label")).includes("Ember Host Cavalry"),
     "Warp moves the unit and keeps its owner",
   );
@@ -612,6 +613,7 @@ try {
   );
   await limited.close();
   await formationChecks(browser, url, monitor, check, out);
+  await warpChecks(browser, url, monitor, check, out);
   await spectatorChecks(browser, url, monitor, check, out);
   check(errors.length === 0, `browser errors: ${errors.join("; ")}`);
   check(badRequests.length === 0, `failed assets: ${badRequests.join("; ")}`);
