@@ -15,7 +15,6 @@ def snapshot(engine):
                       for u in (sq.top, sq.bottom) if u]
                      for row in s.board.grid for sq in row],
             'layout': [sq.layout for row in s.board.grid for sq in row], 'prepared': s.prepared[:],
-            'veteran': [[u.veteran for u in (sq.top, sq.bottom) if u] for row in s.board.grid for sq in row],
             'turn': 1 if s.to_move == 'north' else -1, 'ply': s.move_count,
             'retreats': [s.retreat_counts['north'], s.retreat_counts['south']],
             'kingMoves': [s.king_moves['north'], s.king_moves['south']],
@@ -31,7 +30,9 @@ def emit(engine, actions=None, chosen=None):
                       'losses': event['losses'] if event else [],
                       'approach': event.get('approach') if event else None,
                       'stance': event.get('stance') if event else None,
-                      'veteranUnlocked': event.get('veteran_unlocked', False) if event else False,
+                      'warp': ([event['warp']['from'][0]*8+event['warp']['from'][1], event['warp']['to'][0]*8+event['warp']['to'][1],
+                               (1 if event['warp']['owner']=='north' else -1)*('PNBRQK'.index(event['warp']['unit'])+1)]
+                              if event and 'warp' in event else None),
                       'formation': event.get('formation') if event else None},separators=(',',':')))
 
 for _ in range(100):
@@ -47,9 +48,9 @@ for _ in range(1200):
     for idx, k in enumerate(squares):
         owner='north' if idx==0 else 'south' if idx==1 else rng.choice(['north','south'])
         c='K' if idx<2 else rng.choice('PNBR')
-        b.grid[k//8][k%8].add_unit(Unit(c,owner,c!='K' and rng.random()<.25))
+        b.grid[k//8][k%8].add_unit(Unit(c,owner))
         if rng.random()<.35:
-            sq=b.grid[k//8][k%8];sq.add_unit(Unit(rng.choice('PNBR'),owner,rng.random()<.25))
+            sq=b.grid[k//8][k%8];sq.add_unit(Unit(rng.choice('PNBR'),owner))
             sq.layout=canonical_layout(sq.top,sq.bottom,rng.randrange(4))
     free=[i for i in range(64) if i not in squares]
     for owner in ['north','south']:
@@ -123,3 +124,27 @@ for owner in ('north','south'):
                         sq.layout=canonical_layout(sq.top,sq.bottom,layout)
                         e=Engine('rulesets/default.yaml');e.set_state(GameState(b,to_move=actor_side))
                         emit(e,chosen=(fr,fc,0,3,3,1))
+
+# Warp: every target class, solitary or stacked, Priestess in either subcell or escorting
+# the King, both owners, with a spread of enemy King rows so reference rows differ.
+for owner in ('north','south'):
+    enemy='south' if owner=='north' else 'north'
+    for target in 'PNBRQK':
+        for stacked in (False,True):
+            for pair in ('Q','QP','PQ','QK','KQ'):
+                for king_row in (0,3,7):
+                    b=Board(8,8)
+                    if 'K' not in pair: b.grid[7 if owner=='north' else 0][7].add_unit(Unit('K',owner))
+                    for c in pair: b.grid[4][3].add_unit(Unit(c,owner))
+                    if target=='K':
+                        b.grid[3][3].add_unit(Unit('K',enemy))
+                        b.grid[king_row][0].add_unit(Unit('P',enemy))   # supporter: a lone King ends the game
+                    else:
+                        b.grid[king_row][0].add_unit(Unit('K',enemy))
+                        b.grid[3][3].add_unit(Unit(target,enemy))
+                    if stacked: b.grid[3][3].add_unit(Unit('P',enemy))
+                    e=Engine('rulesets/default.yaml')
+                    try: e.set_state(GameState(b,to_move=owner))
+                    except ValueError: continue
+                    warps=[a for a in e.legal_actions() if a[5]==3]
+                    emit(e,chosen=rng.choice(warps) if warps else None)

@@ -15,7 +15,7 @@ function position(units, enemyKing = 0, layouts = {}) {
 export const LESSONS = [
   {
     title: "The first advance",
-    text: "Select the Pikeman on e2, then choose e3. Units move one square straight or diagonally forward. Cavalry may take two forward steps through an empty square or one ally.",
+    text: "Select the Pikeman on e2, then choose e3. Units step onto the next row toward the enemy King's row, straight or diagonally. Cavalry may take two such steps through an empty square or one ally.",
     state: () => position([[52, [1]]]),
     action: [6, 4, 0, 5, 4, 0],
     success:
@@ -70,16 +70,16 @@ export const LESSONS = [
       "Power shots can kill Cavalry and Heavy Infantry, but never a King. A shot removes one exposed defender; you may choose when both are exposed.",
   },
   {
-    title: "Win an allegiance",
-    text: "Your Priestess on e4 can convert the solitary Cavalry on d4. Select d4 and confirm conversion. The unit will fight for your banner.",
+    title: "Send them away",
+    text: "Your Priestess on e4 can warp the solitary Cavalry on d4. Select the Priestess, select the Cavalry, then choose c8: a square far from your King's row. Nothing dies and nothing changes sides.",
     state: () =>
       position([
         [36, [5]],
         [35, [-2]],
       ]),
-    action: [4, 4, 0, 4, 3, 3],
+    action: [4, 3, 0, 0, 2, 3],
     success:
-      "Priestesses cannot convert stacks, Kings, or other Priestesses. Adjacent opposing Priestesses both die automatically.",
+      "The Cavalry now has the whole board to cross again. Warp works on one solitary Pikeman, Cavalry, Archer, or Heavy Infantry beside the Priestess, never on a King, a Priestess, or formation members. Adjacent opposing Priestesses still die together.",
   },
   {
     title: "A guarded front",
@@ -94,18 +94,12 @@ export const LESSONS = [
       "The defender held its stance. For matching ordinary classes, a guarded front holds. An E–W formation also braces its front diagonals. Class counters still take priority.",
   },
   {
-    title: "Step out of the spear line",
-    text: "An enemy stands directly ahead of your Pikeman on e3. Step sideways to f3 and join the Archer. The full friendly formation on d3 cannot admit another unit.",
-    state: () =>
-      position([
-        [44, [1]],
-        [36, [-1]],
-        [43, [1, 1]],
-        [45, [3]],
-      ]),
-    action: [5, 4, 0, 5, 5, 0],
+    title: "Level with the King",
+    text: "The enemy King stands on rank 4. Your Pikeman on c4 is level with him, so it may only step sideways toward him. Move it to d4. Off his rank, units step onto the next row toward it.",
+    state: () => position([[34, [1]]], 38),
+    action: [4, 2, 0, 4, 3, 0],
     success:
-      "Frontal contact grants one sideways step, even in your own half. Empty squares and single allies are valid destinations; full formations block evasion.",
+      "Every quiet step brings a unit closer to the enemy King's row, so there are no sideways shuffles and no evasion steps. Attacks may still come from any direction.",
   },
   {
     title: "Turn the flank",
@@ -129,7 +123,7 @@ export const LESSONS = [
       ]),
     action: [6, 6, 1, 4, 4, 0],
     success:
-      "The intermediate ally and your source companion stayed in place. A full formation or enemy would block passage. Veteran Cavalry can also take two backward steps after reaching the enemy back rank.",
+      "The intermediate ally and your source companion stayed in place. A full formation or enemy would block passage. Beside the King's row its second step runs along that row, toward him.",
   },
   {
     title: "An answering arrow",
@@ -158,11 +152,11 @@ export const LESSONS = [
     success: "The Pikeman survives and the Cavalry falls. Class counters always come before facing or formation benefits.",
   },
   {
-    title: "Return from the far rank",
-    text: "Your Pikeman on e8 has reached the enemy back rank. Move diagonally backward to f7. The backward ability remains for the rest of its life.",
-    state: () => position([[4, [1]]]),
-    action: [0, 4, 0, 1, 5, 0],
-    success: "The ↶ veteran mark follows this unit. It can still move backward after leaving the far rank, joining formations, or changing allegiance. Kings never gain this ability.",
+    title: "Follow the King",
+    text: "The enemy King has advanced to e4, beyond your Pikeman on e7. Quiet steps always approach the King's row, so your Pikeman turns back: move it diagonally to f6.",
+    state: () => position([[12, [1]]], 36),
+    action: [1, 4, 0, 2, 5, 0],
+    success: "There is no permanent veteran status. One rule points every unit at the enemy King's row, so units he has passed simply turn around.",
   },
   {
     title: "The royal escort holds",
@@ -181,7 +175,7 @@ export const LESSONS = [
   {
     title: "The fourth royal order",
     text: "Your King on h1 has already moved on three consecutive army turns. Move it to g2 to see the forfeit. In a real battle, order another unit instead to reset both counters.",
-    state: () => { const s = position([]); return studyState(s.board, 1, [0, 0], s.layout, [], s.veteran, [3, 0]); },
+    state: () => { const s = position([]); return studyState(s.board, 1, [0, 0], s.layout, [], [3, 0]); },
     action: [7, 7, 0, 6, 6, 0],
     success: "The fourth King movement forfeits, even without retreating. The separate third-backward-movement rule also remains. Preparations never reset either counter.",
   },

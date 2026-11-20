@@ -98,6 +98,6 @@ class RawAgeOfChess(AECEnv):
 def age_of_chess_v1(ruleset_path="rulesets/default.yaml", max_plies=512):
     return wrappers.OrderEnforcingWrapper(RawAgeOfChess(ruleset_path, max_plies))
 
-# Import compatibility only: rules v5 and 41-plane observations require retraining.
+# Import compatibility only: rules v6 and 37-plane observations require retraining.
 def age_of_chess_v0(ruleset_path="rulesets/default.yaml", max_plies=512):
     return age_of_chess_v1(ruleset_path, max_plies)

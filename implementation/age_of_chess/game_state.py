@@ -7,7 +7,6 @@ from .combat import canonical_layout, POSITIONS
 class Unit:
     code: str
     side: str
-    veteran: bool = False
 
 @dataclass
 class Square:
@@ -57,7 +56,7 @@ class Board:
 
     def copy(self):
         def clone(u):
-            return Unit(u.code, u.side, u.veteran) if u else None
+            return Unit(u.code, u.side) if u else None
         return Board(self.rows, self.cols, [[Square(clone(s.top), clone(s.bottom), s.layout) for s in row]
                                            for row in self.grid])
 
@@ -80,8 +79,6 @@ class Board:
                     if u:
                         if u.code not in "PNBRQK" or u.side not in ("north", "south"):
                             raise ValueError("Unknown unit")
-                        if type(u.veteran) is not bool or (u.code == "K" and u.veteran):
-                            raise ValueError("Only non-Kings may retain backward movement")
                         if u.code == "K": kings[u.side] += 1
                         if u.code == "Q": queens[u.side] += 1
         if any(n > 1 for n in kings.values()) or any(n > 1 for n in queens.values()):
@@ -109,7 +106,7 @@ class GameState:
     def position_key(self):
         def key(u):
             if u is None: return 0
-            return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1 + 6*int(u.veteran))
+            return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1)
         cells = []
         for row in self.board.grid:
             for sq in row:

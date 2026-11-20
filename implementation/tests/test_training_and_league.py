@@ -34,23 +34,24 @@ def test_training_step_returns_to_same_learning_side():
     assert env._pz.agent_selection=="south"
     assert env._pz.unwrapped.engine.state.move_count==3
 
-def test_no_farmable_conversion_bonus(position):
+def test_no_farmable_warp_bonus(position):
     from implementation.age_of_chess.pettingzoo_env import age_of_chess_v1
     env=age_of_chess_v1();env.reset()
-    env.unwrapped.engine=position([(4,2,"Q","north"),(4,4,"Q","south"),(4,3,"R","south")])
-    for a in [(4,2,0,4,3,3),(4,4,0,4,3,3)]*2:
+    env.unwrapped.engine=position([(4,3,"Q","north"),(3,3,"R","south"),(1,3,"Q","south"),(2,3,"R","north")])
+    cycle=[(3,3,0,3,2,3),(2,3,0,2,2,3),(3,2,0,3,3,3),(2,2,0,2,3,3)]
+    for a in cycle*2:
         env.step(encode_action(*a))
-        assert env.rewards=={"north":0.0,"south":0.0}
+        assert env.rewards=={"north":0.0,"south":0.0} or env.unwrapped.engine.state.done
     assert env.unwrapped.engine.state.winner=="draw"
 
 def test_league_cap_is_not_a_draw_or_reward_win():
     r=play_game(RandomPolicy(),RandomPolicy(),"rulesets/default.yaml",max_steps=1)
     assert r.truncated and not r.terminated and r.winner is None and r.reason=="ply_limit"
-    d={"white":"A","black":"B","winner":None,"rules_version":5,"truncated":True,"terminated":False}
+    d={"white":"A","black":"B","winner":None,"rules_version":6,"truncated":True,"terminated":False}
     assert score_for_north(d) is None and compute_elo([d])=={}
-    # Legacy reward-adjudicated records are not silently mixed into v5 statistics.
+    # Legacy reward-adjudicated records are not silently mixed into v6 statistics.
     assert score_for_north({"winner":"north"}) is None
-    assert score_for_north({**d, "rules_version":2, "winner":"north", "terminated":True, "truncated":False}) is None
+    assert score_for_north({**d, "rules_version":5, "winner":"north", "terminated":True, "truncated":False}) is None
     d.update(winner="draw",terminated=True,truncated=False)
     assert score_for_north(d)==0.5
 

@@ -127,7 +127,7 @@ export class CombatDirector {
     this.abort = new AbortController();
     this.animations = [];
     try {
-      if (!isPreparation(event.kind) && event.kind > 0 && settings.battles === "cinematic" && !reduced)
+      if (!isPreparation(event.kind) && event.kind > 0 && event.kind !== 3 && settings.battles === "cinematic" && !reduced)
         await this.cinema(event);
       else
         await this.board(before, event, reduced, settings.battles === "quick");
@@ -166,7 +166,11 @@ export class CombatDirector {
       await wait(370, this.abort.signal);
       return;
     }
-    const sound = isShot(event.kind) ? "ranged" : ["move", "melee", "ranged", "convert"][event.kind];
+    if (event.kind === 3) {
+      await this.warp(event, source, target, reduced, quick);
+      return;
+    }
+    const sound = isShot(event.kind) ? "ranged" : ["move", "melee", "ranged"][event.kind];
     this.audio.effect(
       code(event.actor) === "N" && event.kind < 2 ? "cavalry" : sound,
     );
@@ -282,8 +286,7 @@ export class CombatDirector {
         [
           { filter: "brightness(1)" },
           {
-            filter:
-              event.kind === 3 ? "brightness(2) sepia(.4)" : "brightness(1.8)",
+            filter: "brightness(1.8)",
           },
           { filter: "brightness(1)" },
         ],
@@ -292,7 +295,7 @@ export class CombatDirector {
       this.particles.burst(
         to.x + to.width / 2 - canvasBox.x,
         to.y + to.height / 2 - canvasBox.y,
-        event.kind === 3 ? "faith" : "steel",
+        "steel",
       );
       await wait(500, this.abort.signal);
     }
@@ -314,21 +317,61 @@ export class CombatDirector {
       await wait(450, this.abort.signal);
     }
   }
+  // Warp: the unit dissolves in a ring of faith and reappears on its destination.
+  async warp(event, source, target, reduced, quick) {
+    this.audio.effect("convert");
+    if (reduced) {
+      await wait(90, this.abort.signal);
+      return;
+    }
+    const from = source.getBoundingClientRect(),
+      to = target.getBoundingClientRect();
+    this.particles = new Particles(document.querySelector("#board-effects"));
+    const box = this.particles.canvas.getBoundingClientRect();
+    const spot = (rect) => [rect.x + rect.width / 2 - box.x, rect.y + rect.height / 2 - box.y];
+    const caster = document.querySelector(`[data-index="${event.priestess}"]`);
+    if (caster)
+      this.animate(caster, [{ filter: "brightness(1)" }, { filter: "brightness(2) sepia(.4)" }, { filter: "brightness(1)" }], 500);
+    const ghost = document.createElement("div");
+    this.ghost = ghost;
+    ghost.className = "move-ghost";
+    ghost.style.cssText = `left:${from.x}px;top:${from.y - from.height * 0.08}px;width:${from.width}px;height:${from.height * 1.05}px;`;
+    ghost.innerHTML = unitSVG(event.warped);
+    document.body.append(ghost);
+    const art = source.querySelector('[data-slot="0"]');
+    if (art) {
+      art.style.visibility = "hidden";
+      art.classList.add("animation-hidden");
+    }
+    const duration = quick ? 220 : 420;
+    this.particles.burst(...spot(from), "faith", 30);
+    this.animate(ghost, [
+      { opacity: 1, filter: "brightness(1)", transform: "scale(1)" },
+      { opacity: 0, filter: "brightness(2.4)", transform: "scale(.55)" },
+    ], duration);
+    await wait(duration, this.abort.signal);
+    ghost.style.left = `${to.x}px`;
+    ghost.style.top = `${to.y - to.height * 0.08}px`;
+    this.particles.burst(...spot(to), "faith", 30);
+    this.animate(ghost, [
+      { opacity: 0, filter: "brightness(2.4)", transform: "scale(.55)" },
+      { opacity: 1, filter: "brightness(1)", transform: "scale(1)" },
+    ], duration);
+    await wait(duration + 60, this.abort.signal);
+  }
   async cinema(event) {
     const dialog = document.querySelector("#battle-dialog"),
       stage = document.querySelector("#encounter-stage"),
       phase = document.querySelector("#encounter-phase");
     document.querySelector("#encounter-title").textContent =
-      `${label(event.actor)} ${event.kind === 3 ? "conversion" : isShot(event.kind) ? "volley" : "engagement"}${event.stance ? ` · ${approachLabel(event.approach)}` : ""}`;
+      `${label(event.actor)} ${isShot(event.kind) ? "volley" : "engagement"}${event.stance ? ` · ${approachLabel(event.approach)}` : ""}`;
     document.querySelector("#encounter-outcome").textContent = "";
     phase.textContent =
-      event.kind === 3
-        ? "A prayer crosses the field"
-        : isShot(event.kind)
-          ? "The bowstring draws"
-          : code(event.actor) === "N"
-            ? "The cavalry gathers speed"
-            : "The lines meet";
+      isShot(event.kind)
+        ? "The bowstring draws"
+        : code(event.actor) === "N"
+          ? "The cavalry gathers speed"
+          : "The lines meet";
     const primarySlot = event.kind === 1 ? event.formation.waves[0].slots[0] : event.targetSlot || 0;
     const secondarySlot = 1 - primarySlot, primaryUnit = event.defender[primarySlot];
     const fallen = new Set();
@@ -498,83 +541,46 @@ export class CombatDirector {
           "dust",
           30,
         );
-    } else {
-      this.audio.effect("convert");
-      const ring = document.createElement("div");
-      ring.className = "spell-ring";
-      stage.append(ring);
+    }
+    phase.textContent =
+      event.kind === 1 && !event.survival[0]
+        ? "The charge is repelled"
+        : "The engagement is decided";
+    const dying = [];
+    if (event.returnFire || (event.kind === 1 && !event.survival[0]))
+      dying.push(a);
+    if (isShot(event.kind) || (event.kind === 1 && !event.survival[1 + primarySlot]))
+      dying.push(d);
+    if (b && event.kind === 1 && !event.survival[1 + secondarySlot]) dying.push(b);
+    for (const el of dying.filter(el => !fallen.has(el)))
       this.animate(
-        a.querySelector(".weapon"),
-        [{ transform: "rotate(0)" }, { transform: "rotate(-20deg)" }],
-        550,
-      );
-      this.animate(
-        ring,
+        el,
         [
-          { transform: "scale(.2)", opacity: 0 },
-          { transform: "scale(1)", opacity: 1 },
-          { transform: "scale(1.3)", opacity: 0 },
+          { opacity: 1, translate: "0 0", rotate: "0deg" },
+          {
+            opacity: 0.5,
+            translate: "0 14px",
+            rotate: el === a ? "-50deg" : "50deg",
+            offset: 0.55,
+          },
+          {
+            opacity: 0,
+            translate: "0 30px",
+            rotate: el === a ? "-80deg" : "80deg",
+          },
         ],
-        1600,
+        720,
       );
-      for (let i = 0; i < 5; i++) {
-        this.particles.burst(
-          d.offsetLeft + 70,
-          this.particles.height - 45,
-          "faith",
-          25,
-        );
-        await wait(180, this.abort.signal);
-      }
-      d.innerHTML = unitSVG(-event.defender[0]);
+    if (event.kind === 1 && event.survival[0] && !event.moved)
       this.animate(
-        d,
-        [{ filter: "brightness(2.5)" }, { filter: "brightness(1)" }],
-        650,
+        a,
+        [
+          { transform: `translateX(${charge}px)` },
+          { transform: "translateX(0)" },
+        ],
+        800,
       );
-      phase.textContent = "A new allegiance is sworn";
-    }
-    if (event.kind !== 3) {
-      phase.textContent =
-        event.kind === 1 && !event.survival[0]
-          ? "The charge is repelled"
-          : "The engagement is decided";
-      const dying = [];
-      if (event.returnFire || (event.kind === 1 && !event.survival[0]))
-        dying.push(a);
-      if (isShot(event.kind) || (event.kind === 1 && !event.survival[1 + primarySlot]))
-        dying.push(d);
-      if (b && event.kind === 1 && !event.survival[1 + secondarySlot]) dying.push(b);
-      for (const el of dying.filter(el => !fallen.has(el)))
-        this.animate(
-          el,
-          [
-            { opacity: 1, translate: "0 0", rotate: "0deg" },
-            {
-              opacity: 0.5,
-              translate: "0 14px",
-              rotate: el === a ? "-50deg" : "50deg",
-              offset: 0.55,
-            },
-            {
-              opacity: 0,
-              translate: "0 30px",
-              rotate: el === a ? "-80deg" : "80deg",
-            },
-          ],
-          720,
-        );
-      if (event.kind === 1 && event.survival[0] && !event.moved)
-        this.animate(
-          a,
-          [
-            { transform: `translateX(${charge}px)` },
-            { transform: "translateX(0)" },
-          ],
-          800,
-        );
-      await wait(730, this.abort.signal);
-    }
+    await wait(730, this.abort.signal);
     // Simultaneous Priestess casualties, if not already the direct melee casualties.
     if (event.losses.some((l) => l.cause === "priestess_adjacency")) {
       phase.textContent = "Opposing faiths extinguish one another";

@@ -12,8 +12,6 @@ class StrictModel(BaseModel):
 class MoveSpec(StrictModel):
     steps: list[tuple[int, int]]
     max_steps: int = Field(default=1, ge=1, le=2)
-    attack_field_sideways: bool = True
-    last_rank_all_directions: bool = True
     retreat_trigger: Literal["none", "adjacent_enemy", "nearby_enemy"] = "none"
     threat_radius: int = Field(default=1, ge=1, le=8)
 
@@ -24,7 +22,7 @@ class MoveSpec(StrictModel):
         return self
 
 class AbilitySpec(StrictModel):
-    name: Literal["ranged", "power_shot", "convert"]
+    name: Literal["ranged", "power_shot", "warp"]
     range: Literal[1]
     targets: list[str]
     requires_stack_size: int = Field(default=1, ge=1, le=2)
@@ -33,10 +31,10 @@ class AbilitySpec(StrictModel):
     def targets_valid(self):
         if any(c not in CODES for c in self.targets):
             raise ValueError("unknown ability target")
-        if "K" in self.targets or (self.name == "convert" and "Q" in self.targets):
-            raise ValueError("Kings cannot be shot/converted; Priestesses cannot be converted")
-        if self.name == "convert" and (self.range != 1 or self.requires_stack_size != 1):
-            raise ValueError("conversion is an adjacent single-unit ability")
+        if "K" in self.targets or (self.name == "warp" and "Q" in self.targets):
+            raise ValueError("Kings cannot be shot/warped; Priestesses cannot be warped")
+        if self.name == "warp" and (self.range != 1 or self.requires_stack_size != 1):
+            raise ValueError("warp is an adjacent single-unit ability")
         if self.name == "power_shot" and self.requires_stack_size != 2:
             raise ValueError("power shot requires two Archers")
         return self
@@ -51,7 +49,6 @@ class PieceSpec(StrictModel):
 class BoardSpec(StrictModel):
     rows: Literal[8] = 8
     cols: Literal[8] = 8
-    attack_field_depth: int = Field(default=4, ge=1, le=4)
 
 class MinimalLossSpec(StrictModel):
     enabled: bool = True
@@ -75,16 +72,15 @@ class CombatSpec(StrictModel):
 
 class GameSpec(StrictModel):
     name: str
-    version: Literal[5]
+    version: Literal[6]
+    advance_reference: Literal["enemy_king_row"]
     attack_all_directions: Literal[True]
     lone_commander_loses: Literal[True]
     commander_retreat_limit: Literal[3]
     king_move_limit: Literal[4]
-    permanent_backward_movement: Literal[True]
     king_formation_guard: Literal["escort_first"]
     archer_return_fire: Literal[True]
     same_type_stance: Literal["guarded_center"]
-    frontal_enemy_sidesteps: Literal[True]
     cavalry_pass_single_ally: Literal[True]
     formation_rearrangements: Literal[3]
     formation_combat: Literal["ready_reserve"]
@@ -106,7 +102,7 @@ class GameSpec(StrictModel):
         if any(result != "illegal" for result in self.combat.single["K"].values()):
             raise ValueError("Kings are defenseless and cannot attack")
         king = self.pieces["K"].move
-        if king.last_rank_all_directions or king.retreat_trigger != "nearby_enemy" or king.threat_radius != 2:
+        if king.retreat_trigger != "nearby_enemy" or king.threat_radius != 2:
             raise ValueError("Kings may retreat only within two squares of an enemy")
         for actor, row in self.combat.single.items():
             for defender, result in row.items():
@@ -118,14 +114,14 @@ class GameSpec(StrictModel):
         for actor in "PNBR":
             for defender in "PNBR":
                 if actor != defender and self.combat.single[actor][defender] != ("win" if (actor, defender) in wins else "lose"):
-                    raise ValueError("Rules v5 requires unconditional ordinary-class counters")
+                    raise ValueError("Rules v6 requires unconditional ordinary-class counters")
         for code, piece in self.pieces.items():
             names = [a.name for a in piece.abilities]
             if len(set(names)) != len(names):
                 raise ValueError("duplicate ability")
-            if any((a.name == "convert" and code != "Q") or
-                   (a.name != "convert" and code != "B") for a in piece.abilities):
-                raise ValueError("conversion belongs to Priestess; shooting to Archer")
+            if any((a.name == "warp" and code != "Q") or
+                   (a.name != "warp" and code != "B") for a in piece.abilities):
+                raise ValueError("warp belongs to Priestess; shooting to Archer")
         return self
 
 class RewardsSpec(StrictModel):

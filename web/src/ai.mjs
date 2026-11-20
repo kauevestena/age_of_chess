@@ -20,7 +20,6 @@ export function evaluate(state) {
       const center = 3.5 - Math.abs(column - 3.5);
       let value = RULES.pieces[c].value * 100;
       if (c !== "K") value += advance * 4 + center * 2;
-      if (state.veteran[i][slot]) value += 20;
       if (c === "K" && sq.length === 2) value += 35;
       if (
         c === "B" &&
@@ -35,12 +34,30 @@ export function evaluate(state) {
   return result * state.turn;
 }
 
+/** A Warp adds an order per empty square, so the search keeps only the best few
+ * destinations per target: farthest from the warping side's King row, then farthest
+ * from the King itself. Results describe this exile heuristic, not expert Warp play.
+ */
+export function capWarps(state, actions, keep = 3) {
+  const king = state.board.findIndex((sq) => sq.includes(state.turn * 6));
+  const kr = king >> 3, kc = king % 8;
+  const rank = (a) => Math.abs(a[3] - kr) * 10 + Math.max(Math.abs(a[3] - kr), Math.abs(a[4] - kc));
+  const groups = new Map(), rest = [];
+  for (const a of actions) {
+    if (a[5] !== 3) rest.push(a);
+    else groups.set(a[0] * 8 + a[1], [...(groups.get(a[0] * 8 + a[1]) || []), a]);
+  }
+  for (const list of groups.values())
+    rest.push(...list.sort((x, y) => rank(y) - rank(x) || (x[3] * 8 + x[4]) - (y[3] * 8 + y[4])).slice(0, keep));
+  return rest;
+}
+
 function priority(state, a) {
   const [r, c, slot, rr, cc, kind] = a,
     actor = state.board[r * 8 + c][slot],
     dst = state.board[rr * 8 + cc];
   const val = (u) => (u ? RULES.pieces[code(u)].value * 100 : 0);
-  if (kind === 3) return 2 * val(dst[0]) + 15;
+  if (kind === 3) return 0; // Warp: no material swing.
   if (isShot(kind)) {
     const target = dst[shotSlot(kind)];
     return val(target) - (code(target) === "B" ? val(actor) : 0) + 10;
@@ -68,7 +85,7 @@ function priority(state, a) {
  */
 export function chooseAction(state, difficulty = "knight", options = {}) {
   const random = options.random || Math.random;
-  const legal = legalOrders(state);
+  const legal = capWarps(state, legalOrders(state));
   if (!legal.length) return { action: null, depth: 0, nodes: 0 };
   const settings = { squire: [1, 80], knight: [2, 450], marshal: [5, 1300] }[
     difficulty
@@ -96,7 +113,7 @@ export function chooseAction(state, difficulty = "knight", options = {}) {
           ? 100000 - distance
           : -100000 + distance;
     if (!depth) return evaluate(s);
-    const moves = legalOrders(s).sort(
+    const moves = capWarps(s, legalOrders(s)).sort(
       (a, b) => priority(s, b) - priority(s, a),
     );
     let value = -Infinity;
@@ -154,12 +171,12 @@ export function planPreparations(state, order) {
   const after = transition(state, order, true).state;
   if (after.winner !== null) return [];
   const eligible = new Set(options.map(a => a[0] * 8 + a[1]).filter(i =>
-    state.board[i].join() === after.board[i].join() && state.veteran[i].join() === after.veteran[i].join()));
+    state.board[i].join() === after.board[i].join()));
   const scores = new Map([...eligible].map(i => [i, [0, 0, 0, 0]]));
   const val = u => RULES.pieces[code(u)].value * 100;
   for (let layout = 0; layout < 4; layout++) {
     const view = { ...after, layout: [...after.layout] };
-    for (const i of eligible) view.layout[i] = canonicalLayout(state.board[i], layout, state.veteran[i]);
+    for (const i of eligible) view.layout[i] = canonicalLayout(state.board[i], layout);
     const risks = new Map();
     for (const action of unfilteredActions(view)) {
       const [r, c, slot, rr, cc, kind] = action, to = rr * 8 + cc;

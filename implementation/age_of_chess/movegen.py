@@ -4,16 +4,38 @@ from .combat import melee_allowed, contact_slots, canonical_layout
 
 Action = tuple[int, int, int, int, int, int]
 ALL_DIRS = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if dr or dc]
-SIDEWAYS_DIRS = [(0, -1), (0, 1)]
 
 def forward_dirs(side):
     return [(-1 if side == "north" else 1, dc) for dc in (-1, 0, 1)]
 
-def is_last_rank(side, row, rows):
-    return row == (0 if side == "north" else rows-1)
+def sign(value):
+    return (value > 0) - (value < 0)
 
-def in_attack_field(side, row, rows, depth=4):
-    return row < depth if side == "north" else row >= rows-depth
+def enemy_king_square(state, side):
+    """Square of the enemy King, or None when it is not on the board."""
+    for r, row in enumerate(state.board.grid):
+        for c, sq in enumerate(row):
+            for unit in (sq.top, sq.bottom):
+                if unit and unit.code == "K" and unit.side != side:
+                    return (r, c)
+    return None
+
+def advance_steps(steps, r, c, side, king):
+    """M2: quiet advance steps of a non-King unit standing on (r, c).
+
+    Off the enemy King's row the unit steps onto the adjacent row on the King's
+    side (the YAML step columns decide straight/diagonal); level with the King
+    it steps one square along the row toward him. Without an enemy King (study
+    positions only) the unit falls back to ordinary forward movement.
+    """
+    if not steps:
+        return []
+    if king is None:
+        return [(-1 if side == "north" else 1, dc) for _, dc in steps]
+    kr, kc = king
+    if r != kr:
+        return [(sign(kr - r), dc) for _, dc in steps]
+    return [(0, sign(kc - c))] if c != kc else []
 
 def enemy_near(state, r, c, side, radius):
     for rr in range(max(0, r-radius), min(state.board.rows, r+radius+1)):
@@ -34,11 +56,16 @@ def clear_los(state, r0, c0, r1, c1):
 def cavalry_passable(square, side):
     return square.is_empty() or (square.top.side == side and square.bottom is None)
 
+def empty_squares(state):
+    return [(r, c) for r, row in enumerate(state.board.grid) for c, sq in enumerate(row) if sq.is_empty()]
+
 def gen_single_moves(state, rules):
     if state.done:
         return []
     rows, cols, side = state.board.rows, state.board.cols, state.to_move
+    king = enemy_king_square(state, side)
     actions = set()
+    empties = None
     for r, row in enumerate(state.board.grid):
         for c, sq in enumerate(row):
             for slot, unit in enumerate((sq.top, sq.bottom)):
@@ -46,66 +73,66 @@ def gen_single_moves(state, rules):
                     continue
                 spec = rules.game.pieces[unit.code]
                 movement = spec.move
-                dirs = [(dr if side == "north" else -dr, dc) for dr, dc in movement.steps]
 
-                def destination(rr, cc, attack_only=False):
+                def quiet(rr, cc):
                     if not in_bounds(rr, cc, rows, cols): return
                     target = state.board.grid[rr][cc]
                     if target.is_empty() or (target.top.side == side and target.bottom is None):
-                        if not attack_only: actions.add((r, c, slot, rr, cc, 0))
-                    elif target.top.side != side:
-                        if melee_allowed(unit, target, rules, (r, c), (rr, cc)):
-                            actions.add((r, c, slot, rr, cc, 1))
+                        actions.add((r, c, slot, rr, cc, 0))
 
-                # Veterans retain their class's reach in the backward direction.
-                # A two-step quiet Cavalry move uses two forward OR two backward steps.
-                directions = [dirs] + ([[( -dr, dc) for dr, dc in dirs]] if unit.veteran else [])
-                for group in directions:
-                    for dr, dc in group:
-                        rr, cc = r+dr, c+dc
-                        if not in_bounds(rr, cc, rows, cols): continue
-                        destination(rr, cc)
-                        if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
-                            for dr2, dc2 in group:
-                                destination(rr+dr2, cc+dc2)
-                extra = []
-                if movement.last_rank_all_directions and is_last_rank(side, r, rows):
-                    extra = ALL_DIRS
-                elif movement.retreat_trigger != "none" and enemy_near(
+                def attack(rr, cc):
+                    if not in_bounds(rr, cc, rows, cols): return
+                    target = state.board.grid[rr][cc]
+                    if target.top and target.top.side != side and melee_allowed(
+                            unit, target, rules, (r, c), (rr, cc)):
+                        actions.add((r, c, slot, rr, cc, 1))
+
+                def steps_from(rr, cc):
+                    # The King always moves toward the enemy back rank (M7); every
+                    # other class advances toward the enemy King's row (M2).
+                    if unit.code == "K":
+                        return [(-dr if side == "south" else dr, dc) for dr, dc in movement.steps]
+                    return advance_steps(movement.steps, rr, cc, side, king)
+
+                # M2-M4: one advance step; Cavalry may take a second step chosen
+                # afresh from a passable intermediate square.
+                for dr, dc in steps_from(r, c):
+                    rr, cc = r+dr, c+dc
+                    if not in_bounds(rr, cc, rows, cols): continue
+                    quiet(rr, cc)
+                    if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
+                        for dr2, dc2 in steps_from(rr, cc):
+                            quiet(rr+dr2, cc+dc2)
+
+                # M5/M7: contact step (Priestess) and peril step (King).
+                if movement.retreat_trigger != "none" and enemy_near(
                         state, r, c, side,
                         1 if movement.retreat_trigger == "adjacent_enemy" else movement.threat_radius):
-                    extra = ALL_DIRS
-                elif movement.attack_field_sideways and in_attack_field(
-                        side, r, rows, rules.game.board.attack_field_depth):
-                    extra = SIDEWAYS_DIRS
-                for dr, dc in extra:
-                    destination(r+dr, c+dc)
-                ahead = r + (-1 if side == "north" else 1)
-                if in_bounds(ahead, c, rows, cols):
-                    enemy = state.board.grid[ahead][c].top
-                    if enemy and enemy.side != side:
-                        for dr, dc in SIDEWAYS_DIRS:
-                            destination(r+dr, c+dc)
+                    for dr, dc in ALL_DIRS:
+                        quiet(r+dr, c+dc)
 
-                # Direction freedom is only for an enemy destination. A Cavalry
-                # may pass one ally, but not a full formation or an enemy.
+                # M8: attacks are free in every direction; Cavalry may pass one ally.
                 for dr, dc in ALL_DIRS:
                     rr, cc = r+dr, c+dc
                     if not in_bounds(rr, cc, rows, cols): continue
-                    destination(rr, cc, attack_only=True)
+                    attack(rr, cc)
                     if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
                         for dr2, dc2 in ALL_DIRS:
-                            destination(rr+dr2, cc+dc2, attack_only=True)
+                            attack(rr+dr2, cc+dc2)
 
                 for ability in spec.abilities:
-                    if ability.name == "convert":
+                    if ability.name == "warp":
+                        # W2/W3: one adjacent solitary enemy unit to any empty square.
                         for dr, dc in ALL_DIRS:
                             rr, cc = r+dr, c+dc
                             if not in_bounds(rr, cc, rows, cols): continue
                             target = state.board.grid[rr][cc]
                             if (target.top and target.top.side != side and target.bottom is None
                                     and target.top.code in ability.targets):
-                                actions.add((r, c, slot, rr, cc, 3))
+                                if empties is None:
+                                    empties = empty_squares(state)
+                                for er, ec in empties:
+                                    actions.add((rr, cc, 0, er, ec, 3))
                     else:
                         if ability.requires_stack_size == 2 and not (
                             sq.top and sq.bottom and sq.top.code == sq.bottom.code == "B"):

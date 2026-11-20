@@ -8,16 +8,44 @@ from .combat import canonical_layout
 def material(engine):
     return engine._material()
 
+def warp_groups(actions):
+    """Group Warp actions by warped unit: {(row, col): [action, ...]}."""
+    groups = {}
+    for a in actions:
+        if a[5] == 3:
+            groups.setdefault((a[0], a[1]), []).append(a)
+    return groups
+
+def best_warp(engine, options, rng):
+    """Spec 10.3: exile the unit as far as possible from the warping side's King row.
+
+    Maximize the row gap to that King, then the Chebyshev distance from him;
+    equal squares are broken with the agent's seeded generator.
+    """
+    side = engine.state.to_move
+    king = next((r, c) for r, row in enumerate(engine.state.board.grid) for c, sq in enumerate(row)
+                for u in (sq.top, sq.bottom) if u and u.code == "K" and u.side == side)
+    def key(a):
+        return (abs(a[3]-king[0]), max(abs(a[3]-king[0]), abs(a[4]-king[1])))
+    top = max(key(a) for a in options)
+    return rng.choice([a for a in options if key(a) == top])
+
+def collapse_warps(engine, actions, rng):
+    """Replace each target's Warps by one heuristic representative (Greedy, Lookahead)."""
+    groups = warp_groups(actions)
+    chosen = {key: best_warp(engine, options, rng) for key, options in groups.items()}
+    return [a for a in actions if a[5] != 3] + sorted(chosen.values())
+
 def score_action(engine, action):
     """Immediate material swing on a settled position, without copying the board."""
     fr, fc, slot, tr, tc, kind = action
-    if kind == 0 or is_preparation(kind):
-        # Automatic adjacent Priestess deaths remove one Q per side, equal values.
+    if kind in (0, 3) or is_preparation(kind):
+        # Automatic adjacent Priestess deaths remove one Q per side, equal values;
+        # a Warp moves a unit without a material swing.
         return 0.0
     values = engine.rules.game.pieces
     src, dst = engine.state.board.grid[fr][fc], engine.state.board.grid[tr][tc]
     actor = (src.top, src.bottom)[slot]
-    if kind == 3: return 2*values[dst.top.code].value
     if is_shot(kind):
         target = (dst.top, dst.bottom)[shot_slot(kind)]
         return values[target.code].value - (values[actor.code].value if target.code == "B" else 0)
@@ -31,14 +59,21 @@ class RandomAgent:
     def __init__(self, seed=None): self.rng = random.Random(seed)
     def select(self, engine):
         legal = engine.legal_actions()
-        return self.rng.choice(legal) if legal else None
+        if not legal: return None
+        # All Warps of one target are a single option; its destination is then uniform.
+        groups = warp_groups(legal)
+        options = [a for a in legal if a[5] != 3] + [("warp", key) for key in sorted(groups)]
+        pick = self.rng.choice(options)
+        return self.rng.choice(groups[pick[1]]) if pick[0] == "warp" else pick
 
 class GreedyAgent(RandomAgent):
     def select(self, engine):
         legal = engine.legal_orders()
         if not legal: return None
+        legal = collapse_warps(engine, legal, self.rng)
         def score(a):
             r, c, slot, rr, _, kind = a
+            if kind == 3: return 0.0
             actor = (engine.state.board.grid[r][c].top, engine.state.board.grid[r][c].bottom)[slot]
             owner = engine.state.to_move
             if actor.code == "K" and kind == 0 and (engine.state.king_moves[owner] >= 3 or
@@ -59,6 +94,7 @@ class LookaheadAgent(RandomAgent):
     def select(self, engine):
         legal = engine.legal_orders()
         if not legal: return None
+        legal = collapse_warps(engine, legal, self.rng)
         side = engine.state.to_move
         # Shuffle equal scores reproducibly to avoid coordinate ordering bias.
         self.rng.shuffle(legal)
@@ -94,7 +130,7 @@ def suggest_preparation(engine, order):
     if after.state.done:
         return None
     def units(sq):
-        return [(u.code, u.side, u.veteran) for u in (sq.top, sq.bottom) if u]
+        return [(u.code, u.side) for u in (sq.top, sq.bottom) if u]
     eligible = {a[0]*8+a[1] for a in options
                 if units(engine.state.board.grid[a[0]][a[1]]) == units(after.state.board.grid[a[0]][a[1]])}
     scores = {i: [0.0]*4 for i in eligible}

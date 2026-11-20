@@ -1,8 +1,10 @@
 # Age of Chess – Warfare: rules v6 specification
 
-**Status:** draft for approval, written 2026-11-13. Nothing here is implemented.
-`RULES.md` and `default.yaml` still describe rules v5, which stay in force until this
-specification is approved and implemented.
+**Status:** approved and implemented. `RULES.md`, `default.yaml`, both engines and the
+browser game now describe rules v6; see the
+[implementation and simulation review](../web/review/WARP_V6.md). The three points listed
+as needing a final yes in section 11 were adopted as written. The text below is the
+specification as approved, apart from the clarifications marked *(implementation note)*.
 
 **Baseline:** rules v5. Every rule not mentioned in this document is unchanged.
 Rule IDs (M1–M10, W1–W9) are meant to be cited by tests.
@@ -434,8 +436,10 @@ over actions would warp almost every time a target is adjacent, and to a random 
   Warps of one target as one option. The destination is the empty square that leaves
   the warped unit the largest row gap to its reference row, with ties broken by
   distance from the warping side's King and then by seeded random choice.
+  *(Implementation note: "distance" means Chebyshev distance and larger is preferred, so
+  the unit is exiled as far from the warper's King as possible.)*
 - **Browser AI:** search only a few destinations per target, chosen by the same
-  heuristic, so the search stays bounded.
+  heuristic, so the search stays bounded. *(Implementation note: three per target.)*
 
 Results will describe these heuristics, not expert Warp play.
 

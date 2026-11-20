@@ -92,15 +92,17 @@ def test_shooting_blockers_and_configuration(position):
     e.rules.game.pieces["B"].abilities=[]
     assert not any(a[-1]==2 for a in e.legal_actions())
 
-def test_conversion_restrictions_and_stack_order(position):
+def test_warp_restrictions_and_stack_order(position):
     e=position([(4,3,"QP","north"),(3,3,"R","south")])
-    e.apply((4,3,0,3,3,3))
+    e.apply((3,3,0,1,6,3))
     sq=e.state.board.grid[4][3]
-    assert sq.top.code+sq.bottom.code=="QP"
-    assert e.state.board.grid[3][3].top.side=="north"
-    for target in ("K","PP"):
+    assert sq.top.code+sq.bottom.code=="QP"   # The Priestess formation is untouched.
+    assert e.state.board.grid[3][3].is_empty()
+    moved=e.state.board.grid[1][6]
+    assert moved.top.code=="R" and moved.top.side=="south" and moved.bottom is None
+    for target in ("K","PP","Q"):
         e=position([(4,3,"Q","north"),(3,3,target,"south")])
-        assert (4,3,0,3,3,3) not in e.legal_actions()
+        assert not any(a[-1]==3 for a in e.legal_actions())
 
 def test_automatic_priestess_deaths_preserve_companions(position):
     e=position([(4,2,"PQ","north"),(3,3,"R","north"),(3,4,"QB","south")])
@@ -111,14 +113,17 @@ def test_automatic_priestess_deaths_preserve_companions(position):
     assert e.state.board.grid[3][4].top.code=="B"
     assert e.state.board.grid[3][4].bottom is None
 
-def test_conversion_cycle_draws_on_third_occurrence(position):
-    e=position([(4,2,"Q","north"),(4,4,"Q","south"),(4,3,"R","south")])
-    cycle=[(4,2,0,4,3,3),(4,4,0,4,3,3)]
+def test_warp_cycle_draws_on_third_occurrence(position):
+    # Each Priestess shuttles one enemy Heavy Infantry between two squares beside her.
+    e=position([(4,3,"Q","north"),(3,3,"R","south"),(1,3,"Q","south"),(2,3,"R","north")])
+    cycle=[(3,3,0,3,2,3),(2,3,0,2,2,3),(3,2,0,3,3,3),(2,2,0,2,3,3)]
     for a in cycle: e.apply(a)
     assert not e.state.done
-    for a in cycle: e.apply(a)
-    assert e.state.terminated and e.state.winner=="draw"
-    assert e.state.move_count==4 and not e.legal_actions()
+    for a in cycle[:3]: e.apply(a)
+    assert not e.state.done
+    e.apply(cycle[3])
+    assert e.state.terminated and e.state.winner=="draw" and e.state.reason=="threefold_repetition"
+    assert e.state.move_count==8 and not e.legal_actions()
 
 def test_rear_king_capture_has_priority(position):
     for actor in "PNBRQ":
@@ -134,7 +139,6 @@ def test_no_action_stagnation(rules):
     r=rules.model_copy(deep=True)
     for p in r.game.pieces.values():
         p.move.steps=[]
-        p.move.last_rank_all_directions=p.move.attack_field_sideways=False
         p.move.retreat_trigger="none"
         p.abilities=[]
     e=Engine(rules=r)

@@ -1,4 +1,4 @@
-"""Rules-v5 engine with atomic validation, ordered friendly stacks and adjudication."""
+"""Rules-v6 engine with atomic validation, ordered friendly stacks and adjudication."""
 from __future__ import annotations
 import copy
 import numpy as np
@@ -8,7 +8,7 @@ from .movegen import gen_single_moves, gen_preparations, ALL_DIRS
 from .combat import resolve_melee, resolve_combat, attack_sector, canonical_layout
 from .utils import action_mask_from_legal, opponent, in_bounds, encode_action, is_preparation, is_shot, shot_slot
 
-OBSERVATION_SHAPE = (41, 8, 8)
+OBSERVATION_SHAPE = (37, 8, 8)
 
 class Engine:
     def __init__(self, ruleset_path="rulesets/default.yaml", *, rules=None):
@@ -44,7 +44,7 @@ class Engine:
         self.state.winner = self.state.reason = None
         self.state.position_counts = {}
         self._priestess_deaths([])
-        self._mark_veterans()
+        self._canonicalize_layouts()
         self.state.position_counts[self.state.position_key()] = 1
         self._adjudicate()
 
@@ -63,9 +63,9 @@ class Engine:
     def immediate_own_deaths(self, action):
         fr, fc, slot, tr, tc, kind = action
         src, dst = self.state.board.grid[fr][fc], self.state.board.grid[tr][tc]
+        if is_preparation(kind) or kind == 3:
+            return []  # Arrangements and Warp (W8) never cost a unit.
         actor = (src.top, src.bottom)[slot]
-        if is_preparation(kind):
-            return []
         if is_shot(kind) and (dst.top, dst.bottom)[shot_slot(kind)].code == "B":
             return ["B"]
         if kind == 1:
@@ -125,7 +125,6 @@ class Engine:
                     if unit:
                         channel = (0 if unit.side == agent else 12) + 6*slot + "PNBRQK".index(unit.code)
                         obs[channel, r, c] = 1
-                        obs[35 + (0 if unit.side == agent else 2) + slot, r, c] = unit.veteran
                 if sq.bottom:
                     obs[29+sq.layout, r, c] = 1
         for i in self.state.prepared:
@@ -138,18 +137,27 @@ class Engine:
         obs[26] = min(count/self.rules.game.repetition_draw, 1.0)
         obs[27] = self.state.retreat_counts[agent] / self.rules.game.commander_retreat_limit
         obs[28] = self.state.retreat_counts[opponent(agent)] / self.rules.game.commander_retreat_limit
-        obs[39] = self.state.king_moves[agent] / self.rules.game.king_move_limit
-        obs[40] = self.state.king_moves[opponent(agent)] / self.rules.game.king_move_limit
+        obs[35] = self.state.king_moves[agent] / self.rules.game.king_move_limit
+        obs[36] = self.state.king_moves[opponent(agent)] / self.rules.game.king_move_limit
         return obs
 
-    def _mark_veterans(self):
-        """The ability belongs to the arriving unit, including after conversion."""
-        for r, row in enumerate(self.state.board.grid):
+    def _canonicalize_layouts(self):
+        """Identical-class formations use the canonical A/B labelling."""
+        for row in self.state.board.grid:
             for sq in row:
-                for unit in (sq.top, sq.bottom):
-                    if unit and unit.code != "K" and r == (0 if unit.side == "north" else 7):
-                        unit.veteran = True
                 sq.layout = canonical_layout(sq.top, sq.bottom, sq.layout)
+
+    def _warper(self, r, c, side):
+        """(row, col, slot) of a friendly Warp-capable unit adjacent to (r, c)."""
+        warpers = {code for code, piece in self.rules.game.pieces.items()
+                   if any(a.name == "warp" for a in piece.abilities)}
+        for rr in range(max(0, r-1), min(8, r+2)):
+            for cc in range(max(0, c-1), min(8, c+2)):
+                if (rr, cc) != (r, c):
+                    for slot, unit in enumerate((self.state.board.grid[rr][cc].top, self.state.board.grid[rr][cc].bottom)):
+                        if unit and unit.side == side and unit.code in warpers:
+                            return rr, cc, slot
+        raise ValueError("No adjacent Warp-capable unit")
 
     def _priestess_deaths(self, losses):
         queens = [(r, c, slot, u) for r, row in enumerate(self.state.board.grid)
@@ -221,8 +229,16 @@ class Engine:
         """Internal transition for previously generated actions (search and tests)."""
         fr, fc, slot, tr, tc, kind = action
         src, dst = self.state.board.grid[fr][fc], self.state.board.grid[tr][tc]
-        actor = (src.top, src.bottom)[slot]
-        side, code = actor.side, actor.code
+        if kind == 3:
+            # Warp: `from` holds the enemy unit; the acting Priestess is adjacent to it.
+            side = self.state.to_move
+            priestess = self._warper(fr, fc, side)
+            actor = self.state.board.grid[priestess[0]][priestess[1]].top if priestess[2] == 0 \
+                else self.state.board.grid[priestess[0]][priestess[1]].bottom
+        else:
+            actor = (src.top, src.bottom)[slot]
+            side = actor.side
+        code = actor.code
         event = {"atype": kind, "actor": code, "player": side,
                  "from": (fr, fc), "to": (tr, tc), "slot": slot, "losses": [], "moved": False}
         def remove(square, which, cause):
@@ -266,13 +282,13 @@ class Engine:
                 remove(src, "bottom" if slot else "top", "return_fire")
                 event["ranged"]["return_fire"] = True
         elif kind == 3:
-            event["convert"] = {"converted": dst.top.code, "previous_side": dst.top.side}
-            dst.top.side = side
+            unit = src.remove_unit("top")
+            dst.add_unit(unit)
+            event["warp"] = {"unit": unit.code, "owner": unit.side, "from": (fr, fc), "to": (tr, tc),
+                             "priestess": priestess[:2], "priestess_slot": priestess[2]}
         self._priestess_deaths(event["losses"])
-        was_veteran = actor.veteran
-        self._mark_veterans()
-        event["veteran_unlocked"] = actor.veteran and not was_veteran
-        backward = (tr-fr) * (1 if side == "north" else -1) > 0
+        self._canonicalize_layouts()
+        backward = kind != 3 and (tr-fr) * (1 if side == "north" else -1) > 0
         self.state.retreat_counts[side] = (self.state.retreat_counts[side]+1
             if code == "K" and event["moved"] and backward else 0)
         self.state.king_moves[side] = self.state.king_moves[side]+1 if code == "K" and event["moved"] else 0

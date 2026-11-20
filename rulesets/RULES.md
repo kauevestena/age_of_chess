@@ -1,4 +1,4 @@
-# Age of Chess – Warfare: rules v5
+# Age of Chess – Warfare: rules v6
 
 This is a capture-the-King game, not checkmate chess. The complete executable
 combat table, movement settings, ability targets and draw threshold are in
@@ -11,7 +11,7 @@ back rank, with eight Pikemen immediately ahead. North occupies rows 6–7 and
 moves toward row 0; South occupies rows 0–1 and moves toward row 7. North acts
 first. Each turn has two phases: optionally rearrange up to **three distinct
 existing friendly formations**, then issue exactly one unit's normal order
-(move, melee attack, ranged attack or conversion). There are no passes,
+(move, melee attack, ranged attack or Warp). There are no passes,
 promotions, castling or en passant.
 
 A square holds at most two **friendly** units. A formation has members **A** and
@@ -27,8 +27,8 @@ A square holds at most two **friendly** units. A formation has members **A** and
 These positions use fixed board coordinates: North is row 0; West is column 0.
 They do not rotate the army's facing. Each chosen formation may select any one
 new arrangement **once per turn**. Switching axis and swapping members together
-is one rearrangement. Swapping identical classes with the same veteran status has no physical effect and is
-not an action. Identical-class formations with matching veteran status canonically label A North/B South or
+is one rearrangement. Swapping identical classes has no physical effect and is
+not an action. Identical-class formations canonically label A North/B South or
 A West/B East, since those members are interchangeable. Rearrangements do not advance the turn, increment repetition or
 alter either King movement counter; the normal order is still required.
 
@@ -40,42 +40,54 @@ a singleton without layout. A newly created formation waits until its owner's
 next turn to rearrange. Stationary abilities preserve surviving members' positions.
 Opposing units cannot share a square.
 
-## Movement and precedence
+## Movement toward the enemy King
 
-A forward step is straight or diagonally toward the enemy back rank. Every class
-normally moves one such step; Cavalry may take one or two forward steps, bending
-between them. Cavalry's intermediate square must be empty or contain exactly one
-ally. That ally stays in place. Enemies and full formations block passage, and
-Cavalry cannot continue after combat. Alternative paths are one action.
+At the table: find the row where the enemy King stands. A unit steps onto the next
+row toward it, straight or diagonally. Once level with the King, it steps along the
+row toward him. While the King stays on his back rank, this is ordinary forward
+movement.
 
-For **attacks only**, armed units can approach from any direction; Cavalry can
-use up to two steps. Kings cannot attack. A Priestess's melee targets remain only
-another Priestess or a King; it uses conversion against solitary ordinary units.
+**Advance step.** Pikemen, Cavalry, Archers, Heavy Infantry and Priestesses move by
+their *reference row*, the row the enemy King occupies when the order is issued:
 
-A non-King unit reaching the enemy back rank by a move or capture permanently
-becomes a **veteran**: it can move backward, including backward diagonals, for the
-rest of its life. Cavalry retains its two-step reach, using two forward or two
-backward steps for a quiet two-step move. A forward/backward zigzag does not grant
-a two-square sideways quiet move. Veteran status follows the individual through
-formation entry, exit, rearrangement and conversion. Converted veterans move
-relative to their new owner. It does not pass to a companion. Non-Kings loaded on
-the enemy back rank in a study position receive the ability immediately.
+| The unit stands | Advance steps |
+|---|---|
+| Off its reference row | One square onto the adjacent row on the King's side: straight, or diagonally to either side |
+| On its reference row | One square sideways toward the enemy King |
 
-Other quiet movement permissions still apply:
+A **quiet move** is one advance step onto an *open* square: empty, or holding exactly
+one ally. Enemy units and full formations cannot be entered by a quiet move. A unit
+beside the enemy King on his row has no quiet move; its only advance step is an attack.
 
-- In the enemy half, non-Kings can step sideways.
-- On the enemy back rank, non-Kings can step once in any direction.
-- An enemy directly one cell ahead grants a one-square sidestep to any unit,
-  even in its home half. A diagonal enemy alone does not grant this exception.
-- A Priestess can retreat if an enemy is adjacent; a veteran Priestess retains
-  backward movement without that threat.
-- A King can retreat **only in peril**: an enemy is within Chebyshev distance two
-  (at most one intervening cell), including adjacent and diagonal enemies,
-  regardless of blockers. This also permits a sideways step. There is no King
-  back-rank exception, and a King never becomes a veteran.
+**Cavalry** may take one or two advance steps as a single order. The second step is
+chosen afresh from the intermediate square, so a Cavalry whose first step reaches the
+reference row takes its second step along that row toward the King. The intermediate
+square must be empty or hold exactly one ally, which stays in place. The destination
+must be open. Enemies and full formations block passage; Cavalry cannot continue after
+combat. Alternative paths to the same destination are one action.
 
-All quiet destinations must be empty or contain one ally. Full cells block them.
-Facing follows ownership, never movement direction or display rotation.
+**The reference row follows the King.** When the enemy King moves, every unit's advance
+steps change with him. A unit he has passed advances back toward him. A capture can
+carry a unit away from the reference row; its next quiet moves follow the same rule.
+
+There are no other quiet moves for non-King units: no sideways steps in the enemy half,
+no free step on the enemy back rank, no evasion step when an enemy stands directly
+ahead, and no permanent backward ability. Two exceptions remain:
+
+- A **Priestess** may also step one square in any direction onto an open square while an
+  enemy unit stands on any of the eight squares around her.
+- A **King** moves forward, straight or diagonally toward the enemy back rank, and has
+  no reference row. **Only in peril** (an enemy within Chebyshev distance two, at most
+  one intervening cell, including adjacent and diagonal enemies, regardless of blockers)
+  may it step one square in any direction. There is no King back-rank exception.
+
+For **attacks only**, armed units can approach from any direction; Cavalry can use up to
+two steps through an empty or single-ally intermediate square. Kings cannot attack. A
+Priestess's melee targets remain only another Priestess or a King; against solitary
+ordinary units she uses Warp. A surviving attacker that clears the square occupies it.
+
+Facing follows ownership, never movement direction or display rotation. Entering a
+square held by one ally forms a formation (see above) whichever way the arrival came.
 
 ## Single-versus-single melee
 
@@ -102,7 +114,7 @@ P=Pikeman, N=Cavalry, B=Archer, R=Heavy Infantry, Q=Priestess, K=King.
 Pikemen, Cavalry, Archers and Heavy Infantry can capture a Priestess in melee.
 A King is **defenseless**: it never attacks or fights back. Every armed class,
 including a Priestess, can capture an encountered King. Kings remain immune to
-ranged attacks and conversion.
+ranged attacks and Warp.
 
 ## Guarded stance: matching ordinary classes
 
@@ -121,8 +133,8 @@ Infantry/Infantry, use the defender's perspective, with the defender at cell 5:
 | 4, 6, 7, 8 or 9 | Attacker survives; defender dies |
 
 Facing is fixed by ownership: North faces row 0/rank 8; South faces row 7/rank 1.
-South's numbered frame is rotated 180 degrees. Conversion changes facing; moving
-sideways or backward does not. Flipping the display does not change facing.
+South's numbered frame is rotated 180 degrees. Facing never changes: neither
+movement nor flipping the display alters it.
 For a two-step Cavalry attack use the starting square, not its intermediate step;
 classify row and column differences by sign, including non-diagonal approaches.
 
@@ -191,14 +203,14 @@ ordinary simultaneous-contact rule for these approaches only.
 from behind when it encounters the Pikeman. Heavy Infantry defeats a Pikeman
 escort, then captures its King if reached. An exposed rear King may be captured
 before a countering companion engages. Priestess mutual cancellation is unchanged.
-King support never changes ranged exposure, return fire or conversion.
+King support never changes ranged exposure, return fire or Warp.
 
 Example: a Pikeman flanking Pikeman–King kills and dies with the escort; the King
 survives. This does not automatically end the game if the King has other allies.
 King at South is a suggested arrangement, not a restriction. Subcells are fixed
 board coordinates; the rear of South's army is North. Players may choose freely.
 
-## Ranged attacks and conversion
+## Ranged attacks and Warp
 
 An Archer in either slot can fire along any of the eight straight/diagonal rays at distance
 exactly one, including a double-Archer power shot. The first occupied square
@@ -216,10 +228,26 @@ shooting Archer both die, whatever the approach or their A/B assignments. Their
 companions survive; there is no recursive volley. Other shots remove only the
 chosen exposed defender. Ranged return fire is distinct from same-class melee.
 
-A Priestess in either slot may convert an adjacent **solitary** Pikeman, Cavalry,
-Archer or Heavy Infantry. Conversion changes ownership in place; it does not move
-or rearrange the Priestess. Stacked enemies, Kings and Priestesses cannot be
-converted. Converted units use their new owner's forward direction immediately and retain veteran status.
+A Priestess's **Warp** replaces conversion. It is a normal order: it is the turn's
+single order, it may follow up to three formation rearrangements, and the Priestess
+does not move. A Priestess in either slot of a formation may Warp, including as the
+King's escort.
+
+- **Target:** one enemy Pikeman, Cavalry, Archer or Heavy Infantry that is **solitary**
+  and stands on one of the eight squares around the Priestess. Kings, Priestesses,
+  members of any formation and friendly units cannot be warped.
+- **Destination:** any **empty** square, chosen by the warping player. There is no range
+  or region limit. A square holding any unit is not a destination, even an open one.
+- **Effect:** the target is lifted from its square and set down on the destination as a
+  solitary unit. It keeps its owner and class. No combat takes place and nothing dies.
+  The Priestess, her companion and their arrangement are unchanged. A warped unit never
+  joins a formation.
+- **After the order:** the warping army's two King counters reset, because the order
+  belongs to another unit. The turn passes and the position counts for repetition. The
+  warped unit's owner moves next, so it may act at once; it moves by the usual rule from
+  its new square. A unit placed within two squares of a King puts that King in peril.
+- Warp has no cooldown and no cap. It cannot capture, so it ends a game only through
+  stagnation or a third repetition.
 
 After each normal order, opposing Priestesses in adjacent squares both die
 **simultaneously**, whether A or B. Their companions survive and are
@@ -241,14 +269,15 @@ gain to erase a death. Do not add an opponent-loss tiebreak. This restriction do
 not examine an opponent's next move. If any normal order loses no own unit immediately,
 all otherwise legal actions remain available, including deliberate sacrifices.
 Preparations are excluded from that calculation: a free rearrangement cannot
-bypass the mandatory minimal-loss restriction. The AI's numerical evaluation
+bypass the mandatory minimal-loss restriction. A Warp loses no friendly unit, so while
+any Warp is available this restriction cannot bind. The AI's numerical evaluation
 values are separate from this mandatory order.
 
 ## End of the game
 
 After the normal order and simultaneous Priestess removals:
 
-1. A captured King loses the game. King conversion is not a win condition.
+1. A captured King loses the game.
 2. A King's **third consecutive backward movement** forfeits. Backward diagonals
    count. A King's **fourth consecutive movement in any direction** also forfeits.
    Both streaks count across that army's turns; opponent turns preserve them.
@@ -259,27 +288,28 @@ After the normal order and simultaneous Priestess removals:
 3. An army reduced to its lone King loses. A King alone on a square is fine while
    allies remain elsewhere. If both armies become lone Kings simultaneously, draw.
 4. If the next player has no available normal order, that player loses by stagnation.
-5. The third occurrence of the same physical units, ownership, veteran abilities,
-   side to move and **both pairs of King counters** draws. Count the initial state
-   and completed normal orders only. Equivalent A/B relabelings with unchanged
-   physical unit identities are the same position. Same-class units with different
-   veteran abilities are distinct. Preparations are not extra occurrences.
+5. The third occurrence of the same physical units, ownership, side to move and
+   **both pairs of King counters** draws. Count the initial state and completed
+   normal orders only. Equivalent A/B relabelings with unchanged physical unit
+   identities are the same position. Preparations are not extra occurrences.
 
 There is no additional no-progress rule. A simulator's ply budget is a separate
 **truncation with no winner**, not a draw and not a material adjudication.
 Illegal API actions are rejected by the engine without changing the board; the
 training interface records them as a protocol forfeit, never substitutes a move.
 Learning rewards are terminal-only and zero-sum: win +1, loss −1, draw 0. Captures
-and conversions do not provide farmable bonuses.
+and warps do not provide farmable bonuses.
 
 ## Version compatibility
 
-Rules v5 changes Kings, ranged distance and permanent unit movement. Browser
-saves carry rules version 5; older saves are rejected rather than reinterpreted.
-The first 35 training planes retain their v4 meaning. Planes 35–38 contain own
-A/B and enemy A/B veteran flags; planes 39–40 contain own/enemy consecutive King
-movement counts divided by four. Observations are `(41, 8, 8)`. Actions retain
-nine kinds and 73,728 IDs. Retrain older models and keep v5 league results separate.
-Legacy internal fields and end reasons containing `commander` remain API names
-for the King; the new all-direction limit is `king_move_forfeit`. Historical
-reports describe their original rules.
+Rules v6 replaces conversion with Warp and forward movement with movement toward the
+enemy King's row, and removes veteran status. Browser saves carry rules version 6;
+older saves are rejected rather than reinterpreted. Observations are `(37, 8, 8)`:
+the first 35 training planes retain their v5 meaning, the four veteran planes are gone,
+and planes 35–36 contain own/enemy consecutive King movement counts divided by four.
+Actions keep nine kinds and 73,728 IDs. Kind 3 is now Warp: `from` is the warped enemy
+unit's square, `slot` is 0, and `to` is the empty destination; the acting Priestess is
+implied because each army has at most one. Retrain older models and keep v6 league
+results separate. Legacy internal fields and end reasons containing `commander`
+remain API names for the King; the all-direction limit is `king_move_forfeit`.
+Historical reports describe their original rules.

@@ -12,7 +12,7 @@ export const squareName = (index) =>
   "abcdefgh"[index % 8] + (8 - Math.floor(index / 8));
 export const actionKey = (action) => action.join(",");
 export const positionKey = (state) =>
-  `${state.turn}|${state.retreats.join(",")}|${state.kingMoves.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i], state.veteran[i])).join(";")}`;
+  `${state.turn}|${state.retreats.join(",")}|${state.kingMoves.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i])).join(";")}`;
 const inside = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
 const directions = [-1, 0, 1].flatMap((r) =>
   [-1, 0, 1].filter((c) => r || c).map((c) => [r, c]),
@@ -42,17 +42,15 @@ export function cloneState(state) {
     counts: { ...state.counts },
     retreats: [...state.retreats],
     kingMoves: [...state.kingMoves],
-    veteran: state.veteran.map(s => [...s]),
     layout: [...state.layout],
     prepared: [...state.prepared],
   };
 }
 
-export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], veteran = null, kingMoves = [0, 0]) {
+export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], kingMoves = [0, 0]) {
   const state = {
     board: board.map((s) => [...s]),
-    layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq, veteran?.[i])),
-    veteran: board.map((sq, i) => veteran?.[i] ? [...veteran[i]] : sq.map(() => false)),
+    layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq)),
     kingMoves: [...kingMoves],
     prepared: [...prepared],
     turn,
@@ -64,7 +62,7 @@ export function studyState(board, turn = 1, retreats = [0, 0], layout = null, pr
   };
   validateState(state);
   priestessDeaths(state, []);
-  markVeterans(state);
+  canonicalizeLayouts(state);
   state.counts[positionKey(state)] = 1;
   adjudicate(state);
   return state;
@@ -102,12 +100,8 @@ export function validateState(s) {
       if (Math.abs(u) >= 5 && (special[u] = (special[u] || 0) + 1) > 1)
         throw Error("Duplicate King or Priestess");
   }
-  if (!Array.isArray(s.veteran) || s.veteran.length !== 64 || s.veteran.some((sq, i) =>
-    !Array.isArray(sq) || sq.length !== s.board[i].length || sq.some((v, slot) =>
-      typeof v !== "boolean" || (v && code(s.board[i][slot]) === "K"))))
-    throw Error("Invalid veteran state");
   if (!Array.isArray(s.layout) || s.layout.length !== 64 || s.layout.some((l, i) =>
-    !Number.isInteger(l) || (s.board[i].length < 2 ? l !== -1 : l < 0 || l > 3 || canonicalLayout(s.board[i], l, s.veteran[i]) !== l)))
+    !Number.isInteger(l) || (s.board[i].length < 2 ? l !== -1 : l < 0 || l > 3 || canonicalLayout(s.board[i], l) !== l)))
     throw Error("Invalid formation layout");
   if (!Array.isArray(s.prepared) || s.prepared.length > RULES.formation_rearrangements || new Set(s.prepared).size !== s.prepared.length || s.prepared.some(i =>
     !Number.isInteger(i) || i < 0 || i >= 64 || s.board[i].length !== 2 || side(s.board[i][0]) !== s.turn))
@@ -144,10 +138,20 @@ export function enemyNear(state, r, c, owner, radius) {
   return false;
 }
 
+// M2: advance steps of a non-King unit on (r, c); `king` is the enemy King's index or -1.
+export function advanceSteps(steps, r, c, owner, king) {
+  if (!steps.length) return [];
+  if (king < 0) return steps.map(([dr, dc]) => [dr * owner, dc]);
+  const kr = king >> 3, kc = king % 8;
+  if (r !== kr) return steps.map(([, dc]) => [Math.sign(kr - r), dc]);
+  return c !== kc ? [[0, Math.sign(kc - c)]] : [];
+}
+
 export function unfilteredActions(state) {
   if (state.winner !== null) return [];
   const actions = new Map(),
-    owner = state.turn;
+    owner = state.turn,
+    king = state.board.findIndex((sq) => sq.includes(-owner * 6));
   state.board.forEach((sq, index) =>
     sq.forEach((unit, slot) => {
       if (side(unit) !== owner) return;
@@ -160,90 +164,52 @@ export function unfilteredActions(state) {
         const a = [r, c, slot, rr, cc, kind];
         actions.set(actionKey(a), a);
       };
-      const destination = (rr, cc, attackOnly = false) => {
+      const quiet = (rr, cc) => {
         if (!inside(rr, cc)) return;
         const dst = state.board[rr * 8 + cc];
-        if (!dst.length || (side(dst[0]) === owner && dst.length === 1)) {
-          if (!attackOnly) add(rr, cc, 0);
-        } else if (
-          side(dst[0]) !== owner &&
-          meleeAllowed(unit, dst, index, rr * 8 + cc, state.layout[rr * 8 + cc])
-        )
+        if (!dst.length || (side(dst[0]) === owner && dst.length === 1)) add(rr, cc, 0);
+      };
+      const attack = (rr, cc) => {
+        if (!inside(rr, cc)) return;
+        const dst = state.board[rr * 8 + cc];
+        if (dst.length && side(dst[0]) !== owner && meleeAllowed(unit, dst, index, rr * 8 + cc, state.layout[rr * 8 + cc]))
           add(rr, cc, 1);
       };
-      const groups = [dirs, ...(state.veteran[index][slot] ? [dirs.map(([dr, dc]) => [-dr, dc])] : [])];
-      for (const group of groups) for (const [dr, dc] of group) {
-        const rr = r + dr,
-          cc = c + dc;
+      // M2-M4: the King always advances toward the enemy back rank; every other class
+      // advances toward the enemy King's row. Cavalry's second step is chosen afresh.
+      const stepsFrom = (rr, cc) => code(unit) === "K" ? dirs : advanceSteps(movement.steps, rr, cc, owner, king);
+      for (const [dr, dc] of stepsFrom(r, c)) {
+        const rr = r + dr, cc = c + dc;
         if (!inside(rr, cc)) continue;
-        destination(rr, cc);
-        if (
-          movement.max_steps === 2 &&
-          cavalryPassable(state.board[rr * 8 + cc], owner)
-        )
-          for (const [dr2, dc2] of group) destination(rr + dr2, cc + dc2);
+        quiet(rr, cc);
+        if (movement.max_steps === 2 && cavalryPassable(state.board[rr * 8 + cc], owner))
+          for (const [dr2, dc2] of stepsFrom(rr, cc)) quiet(rr + dr2, cc + dc2);
       }
-      let extra = [];
-      if (movement.last_rank_all_directions && r === (owner === 1 ? 0 : 7))
-        extra = directions;
-      else if (
-        movement.retreat_trigger !== "none" &&
-        enemyNear(
-          state,
-          r,
-          c,
-          owner,
-          movement.retreat_trigger === "adjacent_enemy"
-            ? 1
-            : movement.threat_radius,
-        )
-      )
-        extra = directions;
-      else if (
-        movement.attack_field_sideways &&
-        (owner === 1
-          ? r < RULES.board.attack_field_depth
-          : r >= 8 - RULES.board.attack_field_depth)
-      )
-        extra = [
-          [0, -1],
-          [0, 1],
-        ];
-      for (const [dr, dc] of extra) destination(r + dr, c + dc);
-      const ahead = r - owner;
-      if (
-        inside(ahead, c) &&
-        state.board[ahead * 8 + c].length &&
-        side(state.board[ahead * 8 + c][0]) !== owner
-      ) {
-        destination(r, c - 1);
-        destination(r, c + 1);
-      }
+      // M5/M7: Priestess contact step and King peril step.
+      if (movement.retreat_trigger !== "none" &&
+        enemyNear(state, r, c, owner, movement.retreat_trigger === "adjacent_enemy" ? 1 : movement.threat_radius))
+        for (const [dr, dc] of directions) quiet(r + dr, c + dc);
+      // M8: attacks are free in every direction; Cavalry may pass one ally.
       for (const [dr, dc] of directions) {
-        const rr = r + dr,
-          cc = c + dc;
+        const rr = r + dr, cc = c + dc;
         if (!inside(rr, cc)) continue;
-        destination(rr, cc, true);
-        if (
-          movement.max_steps === 2 &&
-          cavalryPassable(state.board[rr * 8 + cc], owner)
-        )
-          for (const [dr2, dc2] of directions)
-            destination(rr + dr2, cc + dc2, true);
+        attack(rr, cc);
+        if (movement.max_steps === 2 && cavalryPassable(state.board[rr * 8 + cc], owner))
+          for (const [dr2, dc2] of directions) attack(rr + dr2, cc + dc2);
       }
       for (const ability of spec.abilities) {
-        if (ability.name === "convert") {
+        if (ability.name === "warp") {
+          // W2/W3: one adjacent solitary enemy unit to any empty square.
           for (const [dr, dc] of directions) {
-            const rr = r + dr,
-              cc = c + dc;
+            const rr = r + dr, cc = c + dc;
             if (!inside(rr, cc)) continue;
             const dst = state.board[rr * 8 + cc];
-            if (
-              dst.length === 1 &&
-              side(dst[0]) !== owner &&
-              ability.targets.includes(code(dst[0]))
-            )
-              add(rr, cc, 3);
+            if (dst.length === 1 && side(dst[0]) !== owner && ability.targets.includes(code(dst[0])))
+              for (let e = 0; e < 64; e++)
+                if (!state.board[e].length) {
+                  const a = [rr, cc, 0, e >> 3, e % 8, 3];
+                  actions.set(actionKey(a), a);
+                }
           }
         } else {
           if (
@@ -272,8 +238,9 @@ export function unfilteredActions(state) {
 }
 
 function ownDeaths(state, action) {
-  const [r, c, slot, rr, cc, kind] = action,
-    actor = state.board[r * 8 + c][slot];
+  const [r, c, slot, rr, cc, kind] = action;
+  if (kind === 3) return [];
+  const actor = state.board[r * 8 + c][slot];
   let arrives = kind === 0;
   if (isShot(kind) && code(state.board[rr * 8 + cc][shotSlot(kind)]) === "B") return ["B"];
   if (kind === 1) {
@@ -302,10 +269,23 @@ function ownDeaths(state, action) {
   return [];
 }
 
+// Friendly Warp-capable units on the eight squares around `index` (W1/W6: either subcell).
+export function warpers(state, index, owner) {
+  const r = index >> 3, c = index % 8, found = [];
+  for (const [dr, dc] of directions) {
+    if (!inside(r + dr, c + dc)) continue;
+    const at = (r + dr) * 8 + c + dc;
+    state.board[at].forEach((u, slot) => {
+      if (side(u) === owner && RULES.pieces[code(u)].abilities.some((a) => a.name === "warp")) found.push({ index: at, slot });
+    });
+  }
+  return found;
+}
+
 export function preparationActions(state) {
   if (state.winner !== null || state.prepared.length >= RULES.formation_rearrangements) return [];
   return state.board.flatMap((sq, i) => sq.length === 2 && side(sq[0]) === state.turn && !state.prepared.includes(i)
-    ? [0, 1, 2, 3].filter(l => l !== state.layout[i] && canonicalLayout(sq, l, state.veteran[i]) === l)
+    ? [0, 1, 2, 3].filter(l => l !== state.layout[i] && canonicalLayout(sq, l) === l)
       .map(l => [i >> 3, i % 8, 0, i >> 3, i % 8, 4 + l]) : []);
 }
 
@@ -357,7 +337,6 @@ function priestessDeaths(state, losses) {
     .sort((a, b) => b.i - a.i || b.slot - a.slot)
     .forEach((q) => {
       state.board[q.i].splice(q.slot, 1);
-      state.veteran[q.i].splice(q.slot, 1);
       state.layout[q.i] = -1;
       losses.push({
         unit: q.u,
@@ -368,12 +347,9 @@ function priestessDeaths(state, losses) {
     });
 }
 
-function markVeterans(state) {
+function canonicalizeLayouts(state) {
   state.board.forEach((sq, i) => {
-    sq.forEach((u, slot) => {
-      if (code(u) !== "K" && (i >> 3) === (u > 0 ? 0 : 7)) state.veteran[i][slot] = true;
-    });
-    state.layout[i] = canonicalLayout(sq, state.layout[i], state.veteran[i]);
+    state.layout[i] = canonicalLayout(sq, state.layout[i]);
   });
 }
 
@@ -427,8 +403,10 @@ export function transition(state, action, trusted = false) {
   const from = r * 8 + c,
     to = rr * 8 + cc,
     src = next.board[from],
-    dst = next.board[to],
-    actor = src[slot];
+    dst = next.board[to];
+  // Warp (kind 3): `from` holds the enemy unit; the acting Priestess is adjacent to it.
+  const warper = kind === 3 ? warpers(state, from, state.turn)[0] : null;
+  const actor = kind === 3 ? state.board[warper.index][warper.slot] : src[slot];
   const event = {
     action: [...action],
     actor,
@@ -443,12 +421,10 @@ export function transition(state, action, trusted = false) {
   };
   const remove = (sq, at, index, cause) => {
     const [unit] = sq.splice(index, 1);
-    next.veteran[at].splice(index, 1);
     event.losses.push({ unit, at, slot: index, cause });
   };
   const advance = () => {
     dst.push(...src.splice(slot, 1));
-    next.veteran[to].push(...next.veteran[from].splice(slot, 1));
     event.moved = true;
   };
   if (isPreparation(kind)) {
@@ -484,15 +460,16 @@ export function transition(state, action, trusted = false) {
       event.returnFire = true;
     }
   } else if (kind === 3) {
-    event.converted = dst[0];
-    dst[0] *= -1;
+    event.warped = src[0];
+    event.priestess = warper.index;
+    event.priestessSlot = warper.slot;
+    dst.push(...src.splice(0, 1));
   }
-  next.layout[from] = canonicalLayout(src, next.layout[from], next.veteran[from]);
-  next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst, next.veteran[to]) : canonicalLayout(dst, next.layout[to], next.veteran[to]);
+  next.layout[from] = canonicalLayout(src, next.layout[from]);
+  next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst) : canonicalLayout(dst, next.layout[to]);
   next.prepared = [];
   priestessDeaths(next, event.losses);
-  markVeterans(next);
-  event.veteranUnlocked = event.moved && code(actor) !== "K" && !state.veteran[from][slot] && rr === (state.turn === 1 ? 0 : 7) && dst.includes(actor);
+  canonicalizeLayouts(next);
   const retreatIndex = state.turn === 1 ? 0 : 1;
   next.retreats[retreatIndex] =
     code(actor) === "K" && event.moved && (rr - r) * state.turn > 0
@@ -514,14 +491,14 @@ export function describeEvent(event) {
     who = label(event.actor);
   if (isPreparation(event.kind)) return `Formation at ${destination} rearranges: ${layoutLabel(event.layout)}. A normal order is still required.`;
   if (event.kind === 3)
-    return `${who} converts ${label(event.converted)} at ${destination}.`;
+    return `${who} warps the ${label(event.warped)} from ${squareName(event.from)} to ${destination}.`;
   if (isShot(event.kind))
     return event.returnFire
       ? `Archer fires at ${destination}. The defending Archer returns fire; both Archers fall.`
       : `${who} fires at ${destination}. ${event.losses.map((l) => label(l.unit)).join(" and ")} ${event.losses.length === 1 ? "falls" : "fall"}.`;
   if (event.kind === 1) {
     const losses = event.losses.map((l) => label(l.unit)).join(" and ");
-    return `${who} attacks ${destination}.${event.formation.mode === "king_guard" ? " The King's escort engages first." : event.formation.mode === "serial" ? " The reserve turns and engages." : event.formation.mode === "braced_line" ? " Both defenders brace the front." : event.formation.mode === "simultaneous" ? " Both defenders engage together." : event.stance ? ` ${approachLabel(event.approach)}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}${event.veteranUnlocked ? " Backward movement is now permanent." : ""}`;
+    return `${who} attacks ${destination}.${event.formation.mode === "king_guard" ? " The King's escort engages first." : event.formation.mode === "serial" ? " The reserve turns and engages." : event.formation.mode === "braced_line" ? " Both defenders brace the front." : event.formation.mode === "simultaneous" ? " Both defenders engage together." : event.stance ? ` ${approachLabel(event.approach)}.` : ""} ${losses} ${event.losses.length === 1 ? "falls" : "fall"}.${!event.moved && event.survival[0] ? " Attacker holds position." : ""}`;
   }
-  return `${who} ${event.defender.length ? "joins the formation at" : "advances to"} ${destination}.${event.losses.length ? " Opposing Priestesses fall together." : ""}${event.veteranUnlocked ? " Backward movement is now permanent." : ""}`;
+  return `${who} ${event.defender.length ? "joins the formation at" : "advances to"} ${destination}.${event.losses.length ? " Opposing Priestesses fall together." : ""}`;
 }

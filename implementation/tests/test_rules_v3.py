@@ -55,21 +55,16 @@ def test_cavalry_stance_uses_origin_not_intermediate(position):
 @pytest.mark.parametrize('owner', ['north','south'])
 @pytest.mark.parametrize('code', list('PNBR'))
 @pytest.mark.parametrize('slot', [0,1])
-def test_frontal_evasion_in_home_half(position, owner, code, slot):
+def test_frontal_enemy_grants_no_sidestep(position, owner, code, slot):
+    # v6 (E): an enemy directly ahead no longer allows a sideways step, even at home.
     row,front=(5,4) if owner=='north' else (2,3)
     actor='P'+code if slot else code
-    for enemy_col,allowed in [(3,True),(2,False)]:
-        e=position([(row,3,actor,owner),(front,enemy_col,'P',OTHER[owner]),
-                    (row,2,'P',owner),(row,4,'PP',owner)],side=owner)
+    for enemy_col in (3,2):
+        e=position([(row,3,actor,owner),(front,enemy_col,'P',OTHER[owner]),(row,2,'P',owner)],side=owner)
         legal=e.legal_actions()
-        assert ((row,3,slot,row,2,0) in legal)==allowed
-        assert (row,3,slot,row,4,0) not in legal
-        if allowed:
-            e.apply((row,3,slot,row,2,0))
-            assert codes(e.state.board.grid[row][2])=='P'+code
-    empty=position([(row,3,actor,owner),(front,3,'P',OTHER[owner])],side=owner)
-    assert (row,3,slot,row,4,0) in empty.legal_actions()
-    assert (row,3,slot,row,5,0) not in empty.legal_actions()
+        assert (row,3,slot,row,2,0) not in legal and (row,3,slot,row,4,0) not in legal
+        # The forward diagonals stay available unless blocked.
+        assert any(a[:3]==(row,3,slot) and a[5]==0 and a[3]!=row for a in legal)
 
 @pytest.mark.parametrize('owner', ['north','south'])
 @pytest.mark.parametrize('slot', [0,1])
@@ -147,8 +142,8 @@ def raw_engine(rules, pieces):
         for code in units:b.grid[r][c].add_unit(Unit(code,owner))
     e=Engine(rules=rules);e.set_state(GameState(b));return e
 
-@pytest.mark.parametrize('actor,enemy,kind,reason', [('P','B',1,'lone_commander'),('Q','R',3,'lone_commander'),('B','B',2,'both_commanders_alone')])
-def test_last_support_removed_by_melee_conversion_or_return_fire(rules,actor,enemy,kind,reason):
+@pytest.mark.parametrize('actor,enemy,kind,reason', [('P','B',1,'lone_commander'),('B','B',2,'both_commanders_alone')])
+def test_last_support_removed_by_melee_or_return_fire(rules,actor,enemy,kind,reason):
     e=raw_engine(rules,[(7,7,'K','north'),(0,7,'K','south'),(4,3,actor,'north'),(3,3,enemy,'south')])
     e.apply((4,3,0,3,3,kind))
     assert e.state.reason==reason
@@ -172,7 +167,7 @@ def test_counters_are_cloned_observed_validated_and_part_of_repetition(position)
 
 def test_rules_v3_schema_rejects_misleading_stance_configuration(tmp_path):
     base=yaml.safe_load(Path('rulesets/default.yaml').read_text())
-    for key,value in [('version',2),('same_type_stance','initiative'),('frontal_enemy_sidesteps',False),('cavalry_pass_single_ally',False)]:
+    for key,value in [('version',2),('same_type_stance','initiative'),('advance_reference','forward'),('frontal_enemy_sidesteps',True),('cavalry_pass_single_ally',False)]:
         data=copy.deepcopy(base);data['game'][key]=value
         path=tmp_path/'rules.yaml';path.write_text(yaml.safe_dump(data))
         with pytest.raises(ValueError):load_ruleset(str(path))

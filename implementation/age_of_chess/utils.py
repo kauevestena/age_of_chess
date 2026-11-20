@@ -3,7 +3,7 @@ import operator
 import numpy as np
 
 # (from_row, from_col, slot, to_row, to_col, kind)
-# 0 move, 1 melee, 2 shoot A, 3 convert, 4..7 arrange, 8 shoot B.
+# 0 move, 1 melee, 2 shoot A, 3 warp (from = the warped enemy unit, to = empty destination), 4..7 arrange, 8 shoot B.
 DIMS = (8, 8, 2, 8, 8, 9)
 ACTION_SPACE_SIZE = 73728
 

@@ -20,7 +20,7 @@ COLORS = {
     "move": (40, 160, 60),
     "melee": (200, 60, 60),
     "ranged": (60, 120, 200),
-    "convert": (150, 60, 160),
+    "warp": (150, 60, 160),
     "text": (10, 10, 10),
     "P": (30, 140, 80),
     "N": (200, 120, 40),
@@ -79,7 +79,11 @@ def draw_board(screen, env, show_legal=False):
             elif atype in (2,8):
                 pygame.draw.circle(screen, COLORS["ranged"], (cx, cy), 8, 2)
             elif atype == 3:
-                pygame.draw.circle(screen, COLORS["convert"], (cx, cy), 12, 2)
+                # Warp: ring the warpable enemy; after selecting it, mark every empty destination.
+                if selected == (fr, fc):
+                    pygame.draw.circle(screen, COLORS["warp"], (cx, cy), 12, 2)
+                else:
+                    pygame.draw.circle(screen, COLORS["warp"], (fc*TILE + TILE//2, fr*TILE + TILE//2), 16, 2)
 
 def draw_labels(screen):
     font = pygame.font.SysFont("arial", 14)
@@ -95,7 +99,7 @@ def draw_labels(screen):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((W,H))
-    pygame.display.set_caption("Age of Chess – Viewer (Click: select/move, TAB: toggle slot, L: legal, G: greedy, SPACE: random; A: auto, M: move/melee, R: ranged, C: convert)")
+    pygame.display.set_caption("Age of Chess – Viewer (Click: select/move, TAB: toggle slot, L: legal, G: greedy, SPACE: random; A: auto, M: move/melee, R: ranged, W: warp, click the enemy then an empty square)")
     clock = pygame.time.Clock()
     env = age_of_chess_v0(ruleset_path="rulesets/default.yaml")
     env.reset()
@@ -104,7 +108,7 @@ def main():
     selected = None  # (r,c)
     selected_slot = 0  # A=0, B=1
     target_slot = 0
-    action_mode = None  # A=auto, M=move/melee, R=ranged, C=conversion
+    action_mode = None  # A=auto, M=move/melee, R=ranged, W=warp
 
     running = True
     while running:
@@ -115,7 +119,7 @@ def main():
                 if event.key == pygame.K_a: action_mode = None
                 if event.key == pygame.K_m: action_mode = "melee"
                 if event.key == pygame.K_r: action_mode = "ranged"
-                if event.key == pygame.K_c: action_mode = "convert"
+                if event.key == pygame.K_w: action_mode = "warp"
                 if event.key == pygame.K_t: target_slot = 1-target_slot
                 if event.key in (pygame.K_1,pygame.K_2,pygame.K_3,pygame.K_4) and selected is not None:
                     fr,fc=selected
@@ -155,13 +159,19 @@ def main():
                     # select source if piece present for current side and matches slot
                     sq = engine.state.board.grid[r][c]
                     u = (sq.top if selected_slot==0 else sq.bottom)
-                    if u is not None and u.side == env.agent_selection:
+                    if action_mode == "warp":
+                        # Warp selects the enemy unit; the Priestess is implied.
+                        u = sq.top
+                        if u is not None and u.side != env.agent_selection and sq.bottom is None:
+                            selected = (r,c)
+                    elif u is not None and u.side == env.agent_selection:
                         selected = (r,c)
                 else:
                     # attempt to find a legal action matching selection -> (r,c) to (r2,c2)
                     fr, fc = selected
-                    candidates = [a for a in legal if a[0]==fr and a[1]==fc and a[2]==selected_slot and a[3]==r and a[4]==c]
-                    allowed_types = {None: (0, 1, 2, 3, 8), "melee": (0, 1), "ranged": (2,8), "convert": (3,)}
+                    candidates = [a for a in legal if a[0]==fr and a[1]==fc and a[3]==r and a[4]==c
+                                  and (a[2]==selected_slot or a[5]==3)]
+                    allowed_types = {None: (0, 1, 2, 3, 8), "melee": (0, 1), "ranged": (2,8), "warp": (3,)}
                     candidates = [a for a in candidates if a[5] in allowed_types[action_mode]]
                     if candidates:
                         # Auto prefers abilities; M/R/C lets the player choose explicitly.
@@ -174,7 +184,7 @@ def main():
 
         state = env.unwrapped.engine.state
         status = f"{state.winner or 'unresolved'}: {state.reason}" if state.done else f"{state.to_move} to move"
-        pygame.display.set_caption(f"Age of Chess | {status} | mode: {action_mode or 'auto'} (A/M/R/C) | layout 1–4, target {'B' if target_slot else 'A'} (T) | prepared {len(state.prepared)}/3")
+        pygame.display.set_caption(f"Age of Chess | {status} | mode: {action_mode or 'auto'} (A/M/R/W) | layout 1–4, target {'B' if target_slot else 'A'} (T) | prepared {len(state.prepared)}/3")
         # draw
         draw_board(screen, env, show_legal=show_legal)
         draw_labels(screen)

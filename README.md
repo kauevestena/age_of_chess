@@ -1,16 +1,17 @@
 # Age of Chess – Warfare
 
-A simulator-first tactical chess variant with stacking, ranged attacks, conversion,
+A simulator-first tactical chess variant with stacking, ranged attacks, Warp,
 class counters and capture-the-King victory. See [the complete rules](rulesets/RULES.md).
 
-**Rules v5:** the Commander becomes a defenseless King. Its formation escort fights
-first against front/flank attacks, with stronger matching-class defense; unit
-counters and rear contact remain unchanged. Archers have one-square range, including
-double-Archers. Non-Kings permanently gain backward movement after reaching the
-far rank. Kings retreat only in peril, forfeit on a third consecutive backward move
-or fourth consecutive move in any direction, and still lose when unsupported.
-All four A/B arrangements and three optional preparations remain. See the
-[v5 implementation and simulation review](web/review/KINGS_V5.md).
+**Rules v6:** the Priestess no longer converts; she **warps** an adjacent solitary
+enemy Pikeman, Cavalry, Archer or Heavy Infantry to any empty square. Non-King units
+now advance toward the **enemy King's row** instead of "forward", which replaces
+sideways steps in the enemy half, the frontal sidestep, the back-rank exception and
+veteran status. While the enemy King sits on his back rank this is ordinary forward
+movement. The game needs no markers on a physical chess set. King rules, formations,
+the royal escort and the combat table are unchanged. See the
+[v6 specification](rulesets/RULES_V6_SPEC.md) and the
+[v6 implementation and simulation review](web/review/WARP_V6.md).
 
 ## Browser game
 
@@ -41,7 +42,7 @@ python implementation/examples/gui_viewer.py
 
 GUI: click a source and destination; **TAB** selects the other stack slot,
 **L** toggles legal overlays, **G** plays Greedy, **SPACE** plays a random legal move.
-**A** selects automatic action choice, **M** move/melee, **R** ranged, **C** conversion. **1–4** rearranges the selected formation into A N/B S,
+**A** selects automatic action choice, **M** move/melee, **R** ranged, **W** warp (click the enemy unit, then an empty square). **1–4** rearranges the selected formation into A N/B S,
 A S/B N, A W/B E or A E/B W; **T** selects the other exposed ranged target.
 
 ## Direct engine and PettingZoo
@@ -66,19 +67,19 @@ for agent in env.agent_iter():
 ```
 
 The canonical tuple is `(from_row, from_col, slot, to_row, to_col, kind)` everywhere.
-`kind` is move/join=0, melee=1, shoot A=2, conversion=3, arrangements=4–7
-(in the order above), or shoot B=8. Preparation actions use the same source and
+`kind` is move/join=0, melee=1, shoot A=2, warp=3, arrangements=4–7
+(in the order above), or shoot B=8. A warp uses the warped enemy unit's square as `from`, `slot=0` and an empty `to`;
+the Priestess is implied. Preparation actions use the same source and
 target cell and `slot=0`; the selected acting member still determines the shooter.
 There are 73,728 encoded action IDs. Use `encode_action(*action)`
 for the discrete interface. Illegal direct-engine actions raise before mutation;
 illegal training-interface actions forfeit, without silently executing another move.
 
-The observation has shape `(41, 8, 8)` and dtype `float32`. Planes 0–23 encode
+The observation has shape `(37, 8, 8)` and dtype `float32`. Planes 0–23 encode
 own/opponent A/B classes; 24–28 hold direction, side to move, repetition and both
 King retreat counters. Planes 29–32 identify the four physical arrangements,
 33 marks formations already prepared this turn, and 34 holds the remaining budget
-normalized by three. Planes 35–38 encode own A/B and enemy A/B veteran flags;
-39–40 encode own/enemy King movement streaks divided by four. Coordinates are **absolute**, matching action IDs.
+normalized by three. Planes 35–36 encode own/enemy King movement streaks divided by four. Coordinates are **absolute**, matching action IDs.
 Full repetition history is available in `info['position_counts']`; the observation
 alone does not encode every past position. Inactive/finished masks contain zeros.
 Rewards are per-step, terminal-only and zero-sum. A preparation returns zero reward
@@ -86,11 +87,11 @@ and keeps the same actor; only a normal order advances the turn or ply cap.
 
 Use `engine.state.winner`, `reason`, `terminated` and `truncated` to adjudicate.
 A ply cap is unresolved truncation, not a draw or a reward-based winner. Terminal
-rewards do not pay capture/conversion bonuses that can be farmed in a loop.
+rewards do not pay capture/warp bonuses that can be farmed in a loop.
 
 The old `age_of_chess_v0` name remains an import alias only. Old YAML files and
 checkpoints need migration/retraining: the action layout and observation changed.
-Do not compare old reward-adjudicated league records with v5 results.
+Do not compare old reward-adjudicated league records with v6 results.
 
 ## Training and evaluation
 
@@ -109,7 +110,7 @@ python -m implementation.league.report
 ```
 
 MaskablePPO is preferred; the unmasked A2C baseline may repeatedly forfeit by
-sampling illegal actions. The league loads both flat and tensor v5 checkpoints.
+sampling illegal actions. The league loads both flat and tensor v6 checkpoints.
 It records draws and truncations distinctly and excludes unresolved/legacy records
 from ratings. Greedy uses seeded random tie breaks, not coordinate-order ties.
 
