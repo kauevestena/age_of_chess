@@ -142,7 +142,9 @@ Audio activation follows [Web Audio best practices](https://developer.mozilla.or
 
 The war camp's Rules picker offers Warfare (the default) or Open Field: no formations,
 units move and attack over two squares (Cavalry three, the King one) passing friendly
-units, and an Archer beside a friendly Archer gets the power shot. Every mode — solo,
+units, Archers shoot two squares (a long shot makes that Archer wait two of its army's
+turns before the next, shown by an hourglass), and an Archer beside a friendly Archer gets
+the power shot. Every mode — solo,
 local and spectator — works with either ruleset. Game states carry their ruleset and the
 engine switches rules to match, so the AI worker, saves, undo and review follow each
 game. Saves record `config.ruleset`; older saves load as Warfare. The field guide has an

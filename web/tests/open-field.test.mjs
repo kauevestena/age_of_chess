@@ -11,10 +11,11 @@ const sq = (r, c) => r * 8 + c;
 const key = (a) => a.join();
 
 // A raw Open Field position (no adjudication), so move generation can be compared directly.
-function raw(units, turn) {
+function raw(units, turn, cooldown = {}) {
   const board = Array.from({ length: 64 }, () => []);
   for (const [i, u] of units) board[i] = [u];
-  return { ...initialState("open_field"), board, layout: board.map(() => -1), turn, winner: null, counts: {} };
+  return { ...initialState("open_field"), board, layout: board.map(() => -1), cooldown: board.map((_, i) => cooldown[i] ?? 0),
+    turn, winner: null, counts: {} };
 }
 
 // Independent reference: recursive path enumeration over the combat table (spec + user decisions).
@@ -58,12 +59,17 @@ function reference(state) {
         out.add(key([r, c, 0, to >> 3, to % 8, 1]));
     if (code === "B") {
       const supported = ALL.some(([dr, dc]) => r + dr >= 0 && r + dr < 8 && c + dc >= 0 && c + dc < 8 && board[sq(r + dr, c + dc)][0] === owner * 3);
-      for (const [dr, dc] of ALL) {
-        if (r + dr < 0 || r + dr > 7 || c + dc < 0 || c + dc > 7) continue;
-        const t = board[sq(r + dr, c + dc)];
-        if (t.length && Math.sign(t[0]) !== owner && ("BPQ".includes(codeOf(t[0])) || ("NR".includes(codeOf(t[0])) && supported)))
-          out.add(key([r, c, 0, r + dr, c + dc, 2]));
-      }
+      for (const [dr, dc] of ALL)
+        for (const distance of [1, 2]) {                     // the first occupied square stops the arrow
+          const [tr, tc] = [r + distance * dr, c + distance * dc];
+          if (tr < 0 || tr > 7 || tc < 0 || tc > 7) break;
+          const t = board[sq(tr, tc)];
+          if (!t.length) continue;
+          const ready = distance === 1 || !state.cooldown[at];
+          if (Math.sign(t[0]) !== owner && ready && ("BPQ".includes(codeOf(t[0])) || ("NR".includes(codeOf(t[0])) && supported)))
+            out.add(key([r, c, 0, tr, tc, 2]));
+          break;
+        }
     }
     if (code === "Q")
       board.forEach((t, i) => {
@@ -124,7 +130,8 @@ test("crowded random boards match the reference", () => {
       if (unit === 5) queens.add(owner);
       units.push([i, owner * unit]);
     }
-    const state = raw(units, rnd() < 0.5 ? 1 : -1);
+    const cooldown = Object.fromEntries(units.filter(([, u]) => Math.abs(u) === 3 && rnd() < 0.4).map(([i]) => [i, rnd() < 0.5 ? 1 : 2]));
+    const state = raw(units, rnd() < 0.5 ? 1 : -1, cooldown);
     assert.deepEqual(actual(state), reference(state), JSON.stringify(units));
   }
 });
@@ -214,4 +221,43 @@ test("all AI levels play legal Open Field orders, including a short AI-versus-AI
     validateState(s);
     assert(s.board.every((cell) => cell.length <= 1));
   }
+});
+
+test("Open Field arrows reach two squares; a long shot starts a two-turn cooldown for that Archer", () => {
+  const board = Array.from({ length: 64 }, () => []);
+  board[sq(4, 3)] = [3]; board[sq(2, 3)] = [-1]; board[sq(2, 1)] = [-1]; board[sq(7, 0)] = [1]; board[sq(6, 7)] = [1];
+  board[sq(0, 0)] = [-4]; board[sq(0, 7)] = [-6]; board[63] = [6];
+  let s = studyState(board, 1, [0, 0], null, [], [0, 0], "open_field");
+  const longShot = (state, target) => legalActions(state).some((a) => key(a) === key([4, 3, 0, ...target, 2]));
+  assert(longShot(s, [2, 3]) && longShot(s, [2, 1]));
+  s = transition(s, [4, 3, 0, 2, 3, 2]).state;
+  assert.equal(s.cooldown[sq(4, 3)], 2);
+  s = transition(s, [0, 0, 0, 1, 0, 0]).state;                // South's turn does not count
+  assert.equal(s.cooldown[sq(4, 3)], 2);
+  assert(!longShot(s, [2, 1]));
+  s = transition(s, [7, 0, 0, 6, 0, 0]).state;
+  assert.equal(s.cooldown[sq(4, 3)], 1);
+  s = transition(s, [1, 0, 0, 2, 0, 0]).state;
+  assert(!longShot(s, [2, 1]));
+  s = transition(s, [6, 7, 0, 5, 7, 0]).state;
+  assert.equal(s.cooldown[sq(4, 3)], 0);
+  s = transition(s, [2, 0, 0, 3, 0, 0]).state;
+  assert(longShot(s, [2, 1]));
+  validateState(s);
+});
+
+test("adjacent shots ignore the cooldown, and the cooldown moves with its Archer", () => {
+  const units = [[sq(4, 3), 3], [sq(3, 3), -1], [sq(2, 1), -1], [63, 6], [sq(0, 7), -6], [0, -1]];
+  const s = raw(units, 1, { [sq(4, 3)]: 2 });
+  const shots = unfilteredActions(s).filter((a) => a[5] === 2).map((a) => sq(a[3], a[4]));
+  assert(shots.includes(sq(3, 3)) && !shots.includes(sq(2, 1)));
+  const board = Array.from({ length: 64 }, () => []);
+  board[sq(4, 3)] = [3]; board[63] = [6]; board[sq(0, 7)] = [-6]; board[0] = [-1];
+  const cooldown = board.map((_, i) => (i === sq(4, 3) ? 2 : 0));
+  const moved = transition(studyState(board, 1, [0, 0], null, [], [0, 0], "open_field", cooldown), [4, 3, 0, 2, 3, 0]).state;
+  assert.equal(moved.cooldown[sq(2, 3)], 1);
+  assert.equal(moved.cooldown[sq(4, 3)], 0);
+  const bad = structuredClone(moved);
+  bad.cooldown[63] = 1;
+  assert.throws(() => validateState(bad), /cooldown/);
 });

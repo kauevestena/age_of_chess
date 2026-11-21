@@ -427,7 +427,7 @@ def test_warp_mask_matches_legal_warps_including_member_slots(rules):
 
 def test_no_veteran_state_remains(rules):
     assert not hasattr(Unit("P", "north"), "veteran")
-    assert OBSERVATION_SHAPE == (37, 8, 8)
+    assert OBSERVATION_SHAPE == (38, 8, 8)
     e = raw_engine(rules, [(1, 3, "P", "north"), (0, 4, "K", "south"), (7, 7, "K", "north"), (0, 7, "P", "south")])
     before = e.state.position_key()
     e.apply((1, 3, 0, 0, 3, 0))

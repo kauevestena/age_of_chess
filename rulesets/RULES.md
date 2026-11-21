@@ -309,9 +309,10 @@ and warps do not provide farmable bonuses.
 
 Rules v6 replaces conversion with Warp and forward movement with movement toward the
 enemy King's row, and removes veteran status. Browser saves carry rules version 6;
-older saves are rejected rather than reinterpreted. Observations are `(37, 8, 8)`:
+older saves are rejected rather than reinterpreted. Observations are `(38, 8, 8)`:
 the first 35 training planes retain their v5 meaning, the four veteran planes are gone,
 and planes 35–36 contain own/enemy consecutive King movement counts divided by four.
+Plane 37 is used only by the Open Field ruleset (Archer cooldowns) and is zero here.
 Actions keep nine kinds and 73,728 IDs. Kind 3 is now Warp: `from` is the warped enemy
 unit's square, `slot` names the warped member (0 for a solitary unit), and `to` is the
 empty destination; the acting Priestess is implied because each army has at most one. Retrain older models and keep v6 league

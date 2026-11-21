@@ -15,8 +15,8 @@ the royal escort and the combat table are unchanged. See the
 [v6 implementation and simulation review](web/review/WARP_V6.md).
 
 **Open Field** is a second ruleset: no formations; every unit except the King moves and
-attacks over up to two squares (Cavalry three), passing friendly units; an Archer beside a
-friendly Archer gets the power shot. Pick it under Rules in the browser's war camp, or use
+attacks over up to two squares (Cavalry three), passing friendly units; Archers shoot two squares with a two-turn cooldown after a long shot, and an
+Archer beside a friendly Archer gets the power shot. Pick it under Rules in the browser's war camp, or use
 `Engine("rulesets/open_field.yaml")` / `age_of_chess_v1("rulesets/open_field.yaml")` in
 Python. See the [Open Field rules](rulesets/OPEN_FIELD.md) and its
 [validation and simulation review](web/review/OPEN_FIELD.md).
@@ -83,11 +83,12 @@ There are 73,728 encoded action IDs. Use `encode_action(*action)`
 for the discrete interface. Illegal direct-engine actions raise before mutation;
 illegal training-interface actions forfeit, without silently executing another move.
 
-The observation has shape `(37, 8, 8)` and dtype `float32`. Planes 0–23 encode
+The observation has shape `(38, 8, 8)` and dtype `float32`. Planes 0–23 encode
 own/opponent A/B classes; 24–28 hold direction, side to move, repetition and both
 King retreat counters. Planes 29–32 identify the four physical arrangements,
 33 marks formations already prepared this turn, and 34 holds the remaining budget
-normalized by three. Planes 35–36 encode own/enemy King movement streaks divided by four. Coordinates are **absolute**, matching action IDs.
+normalized by three. Planes 35–36 encode own/enemy King movement streaks divided by four;
+37 holds Open Field Archer cooldowns (zero in Warfare). Coordinates are **absolute**, matching action IDs.
 Full repetition history is available in `info['position_counts']`; the observation
 alone does not encode every past position. Inactive/finished masks contain zeros.
 Rewards are per-step, terminal-only and zero-sum. A preparation returns zero reward

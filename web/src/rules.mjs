@@ -114,7 +114,8 @@ export const RULESETS = {
             ],
             "requires_stack_size": 1,
             "breaks_formations": false,
-            "support": "formation"
+            "support": "formation",
+            "cooldown": 0
           },
           {
             "name": "power_shot",
@@ -125,7 +126,8 @@ export const RULESETS = {
             ],
             "requires_stack_size": 2,
             "breaks_formations": false,
-            "support": "formation"
+            "support": "formation",
+            "cooldown": 0
           }
         ],
         "value": 3.0
@@ -189,7 +191,8 @@ export const RULESETS = {
             ],
             "requires_stack_size": 1,
             "breaks_formations": true,
-            "support": "formation"
+            "support": "formation",
+            "cooldown": 0
           }
         ],
         "value": 4.0
@@ -381,7 +384,7 @@ export const RULESETS = {
         "abilities": [
           {
             "name": "ranged",
-            "range": 1,
+            "range": 2,
             "targets": [
               "B",
               "P",
@@ -389,18 +392,20 @@ export const RULESETS = {
             ],
             "requires_stack_size": 1,
             "breaks_formations": false,
-            "support": "formation"
+            "support": "formation",
+            "cooldown": 2
           },
           {
             "name": "power_shot",
-            "range": 1,
+            "range": 2,
             "targets": [
               "N",
               "R"
             ],
             "requires_stack_size": 1,
             "breaks_formations": false,
-            "support": "adjacent"
+            "support": "adjacent",
+            "cooldown": 2
           }
         ],
         "value": 3.0
@@ -464,7 +469,8 @@ export const RULESETS = {
             ],
             "requires_stack_size": 1,
             "breaks_formations": false,
-            "support": "formation"
+            "support": "formation",
+            "cooldown": 0
           }
         ],
         "value": 4.0

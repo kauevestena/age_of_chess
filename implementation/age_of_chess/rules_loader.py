@@ -29,6 +29,9 @@ class AbilitySpec(StrictModel):
     breaks_formations: bool = False
     # Power shot support: two Archers in one formation, or a friendly Archer on a neighbouring square.
     support: Literal["formation", "adjacent"] = "formation"
+    # Arrows: after a shot beyond one square, that Archer waits this many of its army's
+    # turns before shooting beyond one square again. Adjacent shots are never limited.
+    cooldown: int = Field(default=0, ge=0, le=3)
 
     @model_validator(mode="after")
     def targets_valid(self):
@@ -36,8 +39,10 @@ class AbilitySpec(StrictModel):
             raise ValueError("unknown ability target")
         if "K" in self.targets or (self.name == "warp" and "Q" in self.targets):
             raise ValueError("Kings cannot be shot/warped; Priestesses cannot be warped")
-        if self.name != "warp" and (self.range != 1 or self.breaks_formations):
-            raise ValueError("arrows reach one square; only warp has a range setting or breaks formations")
+        if self.name != "warp" and self.breaks_formations:
+            raise ValueError("only warp breaks formations")
+        if self.name == "warp" and self.cooldown:
+            raise ValueError("only arrows have a cooldown")
         if self.name == "warp" and self.requires_stack_size != 1:
             raise ValueError("warp is performed by a single Priestess")
         if self.name != "power_shot" and self.support != "formation":
@@ -135,6 +140,8 @@ class GameSpec(StrictModel):
                 raise ValueError("Warfare: Cavalry takes up to two steps, every other unit one")
             if power and power.support != "formation":
                 raise ValueError("Warfare power shots come from a two-Archer formation")
+            if any(a.range != 1 or a.cooldown for a in self.pieces["B"].abilities):
+                raise ValueError("Warfare arrows reach one square, with no cooldown")
         else:
             if self.formations or self.formation_rearrangements != 0:
                 raise ValueError("Open Field has no formations and no rearrangements")
@@ -144,6 +151,9 @@ class GameSpec(StrictModel):
                 raise ValueError("Open Field power shots need a friendly Archer on a neighbouring square")
             if warp and warp.breaks_formations:
                 raise ValueError("Open Field has no formations to break")
+            arrows = {(a.range, a.cooldown) for a in self.pieces["B"].abilities}
+            if arrows != {(2, 2)}:
+                raise ValueError("Open Field arrows reach two squares, with a two-turn cooldown after a long shot")
         for code, piece in self.pieces.items():
             names = [a.name for a in piece.abilities]
             if len(set(names)) != len(names):

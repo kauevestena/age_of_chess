@@ -24,13 +24,16 @@ from implementation.age_of_chess.utils import encode_action, decode_action, is_p
 CLASSES = {"Random":RandomAgent,"Greedy":GreedyAgent,"Lookahead":LookaheadAgent}
 _RULES = None
 
-def initialize(path, warp_range=None, warp_breaks=None):
+def initialize(path, warp_range=None, warp_breaks=None, arrow_range=None, arrow_cooldown=None):
     """Load the ruleset; optionally override the Priestess's Warp range / formation breaking."""
     global _RULES
     _RULES = load_ruleset(path)
     ability = next(a for a in _RULES.game.pieces["Q"].abilities if a.name == "warp")
     if warp_range is not None: ability.range = warp_range
     if warp_breaks is not None: ability.breaks_formations = warp_breaks
+    for arrow in _RULES.game.pieces["B"].abilities:
+        if arrow_range is not None: arrow.range = arrow_range
+        if arrow_cooldown is not None: arrow.cooldown = arrow_cooldown
 
 def play(task):
     group,pair_id,name_a,name_b,swap,seed,cap=task
@@ -39,7 +42,7 @@ def play(task):
     north_name,south_name=(name_b,name_a) if swap else (name_a,name_b)
     engine=Engine(rules=_RULES)
     actions=Counter();losses=Counter();warps=Counter();warp_rows=[];stacking=0;minimal=0;royal_guards=0
-    power_shots=0;reach=Counter()
+    power_shots=0;reach=Counter();long_shots=0
     prior_count=32
     trace=[]
     while not engine.state.done and engine.state.move_count < cap:
@@ -66,6 +69,7 @@ def play(task):
         actions[f"{event['actor']}:{event['atype']}"]+=1
         royal_guards+=event.get('formation',{}).get('mode')=='king_guard'
         power_shots+=bool(event.get('ranged',{}).get('power_shot'))
+        if action[-1] in (2,8) and max(abs(action[0]-action[3]),abs(action[1]-action[4]))>1: long_shots+=1
         if action[-1] in (0,1): reach[max(abs(action[0]-action[3]),abs(action[1]-action[4]))]+=1
         if not is_preparation(action[-1]):
             enemy='south' if actor=='north' else 'north'
@@ -89,7 +93,7 @@ def play(task):
             "reason":state.reason,"plies":state.move_count,"terminated":state.terminated,
             "truncated":state.truncated,"minimal_loss_turns":minimal}
     detail={"actions":dict(actions),"deaths":dict(losses),"warps":dict(warps),"warp_rows":warp_rows,"stacking":stacking,
-            "power_shots":power_shots,"reach":dict(reach),
+            "power_shots":power_shots,"reach":dict(reach),"long_shots":long_shots,
             "royal_guards":royal_guards}
     return result,detail,trace
 
@@ -140,6 +144,8 @@ def main():
     p.add_argument("--out",default="implementation/review/results_v6")
     p.add_argument("--warp-range",type=int,choices=(1,2),default=None,help="override the Warp range")
     p.add_argument("--warp-breaks",choices=("on","off"),default=None,help="override whether Warp can break formations")
+    p.add_argument("--arrow-range",type=int,choices=(1,2),default=None,help="override the Archer range")
+    p.add_argument("--arrow-cooldown",type=int,choices=(0,1,2,3),default=None,help="override the long-shot cooldown")
     args=p.parse_args()
     if min(args.pairs,args.search_pairs)<0 or args.max_plies<1: p.error("invalid sample size or cap")
     out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
@@ -152,14 +158,14 @@ def main():
             seed=20260913+group*1000000+pair
             for swap in (False,True): tasks.append((f"{a} vs {b}",pair,a,b,swap,seed,args.max_plies))
     records=[];traces=[];actions=Counter();deaths=Counter();warps=Counter();warp_rows=[];stacking=0;royal_guards=0
-    power_shots=0;reach=Counter()
+    power_shots=0;reach=Counter();long_shots=0
     start=time.monotonic()
-    with ProcessPoolExecutor(max_workers=args.workers,initializer=initialize,initargs=(args.ruleset,None if args.warp_range is None else args.warp_range,None if args.warp_breaks is None else args.warp_breaks=="on")) as pool:
+    with ProcessPoolExecutor(max_workers=args.workers,initializer=initialize,initargs=(args.ruleset,None if args.warp_range is None else args.warp_range,None if args.warp_breaks is None else args.warp_breaks=="on",args.arrow_range,args.arrow_cooldown)) as pool:
         for result,detail,trace in pool.map(play,tasks,chunksize=10):
             records.append(result)
             actions.update(detail["actions"]);deaths.update(detail["deaths"]);warps.update(detail["warps"]);warp_rows+=detail["warp_rows"]
             stacking+=detail["stacking"]
-            royal_guards+=detail["royal_guards"];power_shots+=detail["power_shots"];reach.update(detail["reach"])
+            royal_guards+=detail["royal_guards"];power_shots+=detail["power_shots"];reach.update(detail["reach"]);long_shots+=detail["long_shots"]
             if trace: traces.append({**result,"actions":trace})
             if len(records)%250==0:
                 print(f"{len(records)}/{len(tasks)} games; {time.monotonic()-start:.1f}s",flush=True)
@@ -168,6 +174,8 @@ def main():
         w.writeheader();w.writerows(records)
     warp=next(a for a in load_ruleset(args.ruleset).game.pieces["Q"].abilities if a.name=="warp")
     summary={"rules_version":6,"mode":load_ruleset(args.ruleset).game.mode,"warp_range":args.warp_range or warp.range,
+             "arrow_range":args.arrow_range or max(a.range for a in load_ruleset(args.ruleset).game.pieces["B"].abilities),
+             "arrow_cooldown":args.arrow_cooldown if args.arrow_cooldown is not None else max(a.cooldown for a in load_ruleset(args.ruleset).game.pieces["B"].abilities),
              "warp_breaks_formations":warp.breaks_formations if args.warp_breaks is None else args.warp_breaks=="on","base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
              "source_sha256":source_hash(args.ruleset),"rules_sha256":hashlib.sha256(Path(args.ruleset).read_bytes()).hexdigest(),
              "games":len(records),"plies":sum(r["plies"] for r in records),"max_plies":args.max_plies,
@@ -176,7 +184,7 @@ def main():
              "elapsed_seconds":time.monotonic()-start,"cohorts":summaries(records),
              "actions_by_piece_and_kind":dict(actions),"deaths_by_piece":dict(deaths),
 "warps_by_piece":dict(warps),"warps":sum(warps.values()),
-             "power_shots":power_shots,"orders_by_distance":{str(k):v for k,v in sorted(reach.items())},
+             "power_shots":power_shots,"long_shots":long_shots,"orders_by_distance":{str(k):v for k,v in sorted(reach.items())},
              "warp_rows_added_mean":(sum(warp_rows)/len(warp_rows) if warp_rows else None),
              "stacking_moves":stacking,"royal_guard_combats":royal_guards,
              "versions":{name:importlib.metadata.version(name) for name in ("numpy","pydantic","pyyaml","pettingzoo","gymnasium")},

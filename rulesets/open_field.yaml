@@ -1,5 +1,7 @@
 # Open Field: Age of Chess without formations. Every unit except the King moves and
-# attacks over up to two steps (Cavalry three), passing friendly units. See OPEN_FIELD.md.
+# attacks over up to two steps (Cavalry three), passing friendly units. Archers shoot up to two
+# squares; after a two-square shot that Archer waits two of its army's turns before another.
+# See OPEN_FIELD.md.
 game:
   name: Age of Chess – Open Field
   version: 6
@@ -48,10 +50,12 @@ game:
         max_steps: 2
       abilities:
         - name: ranged
-          range: 1
+          range: 2
+          cooldown: 2
           targets: [B, P, Q]
         - name: power_shot
-          range: 1
+          range: 2
+          cooldown: 2
           support: adjacent
           targets: [N, R]
       value: 3

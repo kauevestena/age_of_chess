@@ -108,7 +108,7 @@ def test_observation_king_counters_validation_and_greedy_avoid_forfeit(position)
     e=position([(4,3,"K","north"),(6,1,"PN","north")])
     e.state.king_moves["north"]=3
     obs=e.observe("north")
-    assert obs.shape==(37,8,8) and np.allclose(obs[35],.75) and np.allclose(obs[36],0)
+    assert obs.shape==(38,8,8) and np.allclose(obs[35],.75) and np.allclose(obs[36],0)
     assert np.allclose(e.observe("south")[36],.75)
     clone=e.clone(); clone.state.king_moves["north"]=0
     assert clone.state.position_key()!=e.state.position_key()

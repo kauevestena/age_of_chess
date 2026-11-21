@@ -7,6 +7,7 @@ from .combat import canonical_layout, POSITIONS
 class Unit:
     code: str
     side: str
+    cooldown: int = 0   # Open Field: own turns before this Archer may shoot beyond one square again.
 
 @dataclass
 class Square:
@@ -56,7 +57,7 @@ class Board:
 
     def copy(self):
         def clone(u):
-            return Unit(u.code, u.side) if u else None
+            return Unit(u.code, u.side, u.cooldown) if u else None
         return Board(self.rows, self.cols, [[Square(clone(s.top), clone(s.bottom), s.layout) for s in row]
                                            for row in self.grid])
 
@@ -81,6 +82,8 @@ class Board:
                     if u:
                         if u.code not in "PNBRQK" or u.side not in ("north", "south"):
                             raise ValueError("Unknown unit")
+                        if type(u.cooldown) is not int or not 0 <= u.cooldown <= 3 or (u.cooldown and u.code != "B"):
+                            raise ValueError("Only Archers carry a shot cooldown")
                         if u.code == "K": kings[u.side] += 1
                         if u.code == "Q": queens[u.side] += 1
         if any(n > 1 for n in kings.values()) or any(n > 1 for n in queens.values()):
@@ -108,7 +111,7 @@ class GameState:
     def position_key(self):
         def key(u):
             if u is None: return 0
-            return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1)
+            return (1 if u.side == "north" else -1) * ("PNBRQK".index(u.code) + 1 + 7*u.cooldown)
         cells = []
         for row in self.board.grid:
             for sq in row:

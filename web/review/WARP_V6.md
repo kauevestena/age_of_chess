@@ -25,7 +25,8 @@ the browser.
 
 Warp is action kind 3: `from` is the warped enemy unit's square, `slot` names the warped
 member (0 for a solitary unit) and `to` is the empty destination. The six-field tuple and the 73,728 action IDs are unchanged.
-Observations are `(37, 8, 8)`. Browser saves carry rules version 6.
+Observations were `(37, 8, 8)` in this release; the Open Field ruleset later added plane 37
+(Archer cooldowns), making them `(38, 8, 8)`. Browser saves carry rules version 6.
 
 ## Interface and AI
 

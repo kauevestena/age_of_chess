@@ -19,6 +19,7 @@ def snapshot(engine):
             'turn': 1 if s.to_move == 'north' else -1, 'ply': s.move_count,
             'retreats': [s.retreat_counts['north'], s.retreat_counts['south']],
             'kingMoves': [s.king_moves['north'], s.king_moves['south']],
+            'cooldown': [sq.top.cooldown if sq.top else 0 for row in s.board.grid for sq in row],
             'winner': {'north':1,'south':-1,'draw':0,None:None}[s.winner], 'reason':s.reason}
 
 def emit(engine, actions=None, chosen=None):
@@ -165,8 +166,8 @@ for _ in range(60):
 def open_position(pieces, to_move):
     """Settle an Open Field study position; None when it is not a legal setup."""
     b = Board(8, 8)
-    for (r, c), code, owner in pieces:
-        b.grid[r][c].add_unit(Unit(code, owner))
+    for (r, c), code, owner, *cool in pieces:
+        b.grid[r][c].add_unit(Unit(code, owner, cool[0] if cool else 0))
     e = Engine(OPEN)
     try: e.set_state(GameState(b, to_move=to_move))
     except ValueError: return None
@@ -182,7 +183,8 @@ for _ in range(900):
         code = rng.choice('PPNBBRQ')
         if code == 'Q' and owner in queens: code = 'B'
         if code == 'Q': queens.add(owner)
-        pieces.append(((k//8, k%8), code, owner))
+        # Some Archers are still cooling down from a long shot.
+        pieces.append(((k//8, k%8), code, owner, rng.choice([1, 2]) if code == 'B' and rng.random() < .4 else 0))
     e = open_position(pieces, rng.choice(['north', 'south']))
     if e: emit(e)
 

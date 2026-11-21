@@ -52,16 +52,29 @@ empty square. Every target stands alone, since there are no formations.
 
 ## Archers
 
-An Archer shoots one square along any straight or diagonal ray, as before. The **power
-shot** against Cavalry or Heavy Infantry needs a **friendly Archer on any of the eight
-squares around the shooter**, instead of two Archers in one formation. The supporting
+An Archer shoots **up to two squares** along any straight or diagonal ray. The first
+occupied square stops the arrow, whoever stands there.
+
+**Long-shot cooldown.** After an Archer shoots a target two squares away, that Archer may
+not shoot two squares again during its army's next two turns. It may shoot again two
+squares away on the third. Shots at an adjacent square are never limited, and other
+Archers are unaffected. The cooldown stays with the Archer when it moves or is warped. At
+the table, remember which Archer made a long shot in your last two orders; the browser
+shows an hourglass with the turns left. An Archer killed by return fire has nothing to
+wait for.
+
+The **power shot** against Cavalry or Heavy Infantry needs a **friendly Archer on any of
+the eight squares around the shooter**, instead of two Archers in one formation. It reaches
+two squares like other arrows and follows the same cooldown. The supporting
 Archer does not need to see the target. Kings can never be shot, and return fire between
 Archers is unchanged.
 
 ## Interfaces
 
 The action tuple and the 73,728 action IDs are unchanged: `slot` is always 0, and action
-kinds 4–8 (arrangements and shooting a B member) never occur. Observations keep the shape
-`(37, 8, 8)`; the second-member and arrangement planes stay zero and the remaining-budget
-plane is 0. Browser saves record the ruleset (`config.ruleset`); saves without it are
+kinds 4–8 (arrangements and shooting a B member) never occur. Observations have the shape
+`(38, 8, 8)` in both rulesets: plane 37 holds each Archer's remaining long-shot cooldown
+divided by two (always zero in Warfare). The second-member and arrangement planes stay
+zero and the remaining-budget plane is 0. Repetition counts an Archer's cooldown as part of
+the position. Browser saves record the ruleset (`config.ruleset`); saves without it are
 Warfare games.

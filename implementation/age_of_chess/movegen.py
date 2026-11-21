@@ -175,7 +175,8 @@ def gen_single_moves(state, rules):
                                 if not in_bounds(rr, cc, rows, cols): break
                                 target = state.board.grid[rr][cc]
                                 if target.top:
-                                    if target.top.side != side:
+                                    # A long shot (beyond one square) waits out the shooter's cooldown.
+                                    if target.top.side != side and (distance == 1 or not unit.cooldown):
                                         for target_slot in contact_slots((r, c), (rr, cc), target.bottom, target.layout):
                                             if (target.top, target.bottom)[target_slot].code in ability.targets:
                                                 actions.add((r, c, slot, rr, cc, 8 if target_slot else 2))

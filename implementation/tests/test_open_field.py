@@ -39,8 +39,10 @@ def inside(sq):
 
 # --------------------------------------------------------------------------- independent reference
 
-def reference_actions(units, side, rules):
-    """Every unfiltered order for `side`. units: {(r, c): (owner, code)}, one unit per square."""
+def reference_actions(units, side, rules, cooldowns=None):
+    """Every unfiltered order for `side`. units: {(r, c): (owner, code)}, one unit per square.
+    cooldowns: {(r, c): turns} for Archers still waiting to shoot beyond one square."""
+    cooldowns = cooldowns or {}
     table = rules.game.combat.single
     enemy_king = next((sq for sq, (o, c) in units.items() if c == "K" and o != side), None)
     empties = [(r, c) for r in range(8) for c in range(8) if (r, c) not in units]
@@ -95,11 +97,16 @@ def reference_actions(units, side, rules):
         if code == "B":
             supported = any(units.get((r + dr, c + dc)) == (side, "B") for dr, dc in ALL)
             for dr, dc in ALL:
-                dst = (r + dr, c + dc)
-                if dst in units and units[dst][0] != side:
-                    target = units[dst][1]
-                    if target in "BPQ" or (target in "NR" and supported):
-                        actions.add((r, c, 0, dst[0], dst[1], 2))
+                for distance in (1, 2):                      # the first occupied square stops the arrow
+                    dst = (r + distance * dr, c + distance * dc)
+                    if not inside(dst):
+                        break
+                    if dst in units:
+                        target = units[dst][1]
+                        ready = distance == 1 or not cooldowns.get(pos)
+                        if units[dst][0] != side and ready and (target in "BPQ" or (target in "NR" and supported)):
+                            actions.add((r, c, 0, dst[0], dst[1], 2))
+                        break
         if code == "Q":
             for dst, (o, target) in units.items():
                 if o != side and target in "PNBR" and max(abs(dst[0] - r), abs(dst[1] - c)) <= 2:
@@ -107,10 +114,10 @@ def reference_actions(units, side, rules):
     return actions
 
 
-def state_of(units, side):
+def state_of(units, side, cooldowns=None):
     board = Board(8, 8)
     for (r, c), (owner, code) in units.items():
-        board.grid[r][c].add_unit(Unit(code, owner))
+        board.grid[r][c].add_unit(Unit(code, owner, (cooldowns or {}).get((r, c), 0)))
     return GameState(board, to_move=side)
 
 
@@ -228,8 +235,9 @@ def test_crowded_random_positions_match_reference(of_rules, seed):
                 queens[owner] += 1
             units[sq] = (owner, code)
         side = rng.choice(["north", "south"])
-        got = set(gen_single_moves(state_of(units, side), of_rules))
-        assert got == reference_actions(units, side, of_rules), (seed, sorted(units.items()), side)
+        cooldowns = {sq: rng.choice([1, 2]) for sq, (o, code) in units.items() if code == "B" and rng.random() < 0.4}
+        got = set(gen_single_moves(state_of(units, side, cooldowns), of_rules))
+        assert got == reference_actions(units, side, of_rules, cooldowns), (seed, sorted(units.items()), side, cooldowns)
         compared += 1
     assert compared == 150
 
@@ -357,7 +365,7 @@ def test_formations_are_rejected_and_never_created(of_rules):
 def test_observation_has_no_second_member(of_rules):
     e = Engine(rules=of_rules)
     obs = e.observe("north")
-    assert obs.shape == (37, 8, 8)
+    assert obs.shape == (38, 8, 8)
     assert not obs[6:12].any() and not obs[18:24].any() and not obs[29:34].any()
 
 
@@ -399,3 +407,79 @@ def test_environments_accept_the_open_field_ruleset():
         ids = env.infos[env.agent_selection]["action_mask"].nonzero()[0]
         env.step(rng.choice(ids))
         env.unwrapped.engine.state.board.validate(formations=False)
+
+
+
+# --------------------------------------------------------------------------- long shots and cooldown
+
+def shots_from(engine, origin):
+    return {(a[3], a[4]) for a in engine.legal_actions() if a[:2] == origin and a[5] == 2}
+
+
+def test_arrows_reach_two_squares_and_stop_at_the_first_unit(of_rules):
+    e = engine_for(of_rules, [(4, 3, "B", "north"), (2, 3, "P", "south"), (2, 5, "Q", "south"), (3, 4, "P", "north"),
+                              (0, 7, "K", "south"), (7, 7, "K", "north")])
+    assert shots_from(e, (4, 3)) == {(2, 3)}            # (2,5) is behind the friendly Pikeman on (3,4)
+    warfare = engine_for(load_ruleset("rulesets/default.yaml"), [(4, 3, "B", "north"), (2, 3, "P", "south"),
+                                                                    (0, 7, "K", "south"), (7, 7, "K", "north")])
+    assert shots_from(warfare, (4, 3)) == set()         # Warfare keeps one-square arrows
+
+
+def test_long_shot_cooldown_lasts_two_of_the_archers_turns(of_rules):
+    # North Archer on d4; South Pikemen on d6 and b6 (two squares away), North spare units to move.
+    e = engine_for(of_rules, [(4, 3, "B", "north"), (2, 3, "P", "south"), (2, 1, "P", "south"), (7, 0, "P", "north"),
+                              (6, 7, "P", "north"), (0, 0, "R", "south"), (0, 7, "K", "south"), (7, 7, "K", "north")])
+    e.apply((4, 3, 0, 2, 3, 2))                          # long shot
+    archer = e.state.board.grid[4][3].top
+    assert archer.cooldown == 2
+    e.apply((0, 0, 0, 1, 0, 0))                          # South moves; North's cooldown does not tick
+    assert archer.cooldown == 2 and (2, 1) not in shots_from(e, (4, 3))
+    e.apply((7, 0, 0, 6, 0, 0))                          # North's first waiting turn
+    assert archer.cooldown == 1
+    e.apply((1, 0, 0, 2, 0, 0))
+    assert (2, 1) not in shots_from(e, (4, 3))
+    e.apply((6, 7, 0, 5, 7, 0))                          # second waiting turn
+    assert archer.cooldown == 0
+    e.apply((2, 0, 0, 3, 0, 0))
+    assert (2, 1) in shots_from(e, (4, 3))              # ready on the third turn
+
+
+def test_adjacent_shots_and_other_archers_are_not_limited(of_rules):
+    e = engine_for(of_rules, [(4, 3, "B", "north"), (3, 3, "P", "south"), (2, 1, "P", "south"), (2, 4, "P", "south"),
+                              (4, 6, "B", "north"), (0, 7, "K", "south"), (7, 7, "K", "north"), (0, 0, "P", "south")])
+    e.state.board.grid[4][3].top.cooldown = 2
+    assert (3, 3) in shots_from(e, (4, 3))               # adjacent shot during the cooldown
+    assert (2, 1) not in shots_from(e, (4, 3))           # but no long shot
+    assert (2, 4) in shots_from(e, (4, 6))               # the other Archer is ready (diagonal, two squares)
+
+
+def test_cooldown_travels_with_the_archer_and_is_part_of_the_position(of_rules):
+    e = engine_for(of_rules, [(4, 3, "B", "north"), (0, 7, "K", "south"), (7, 7, "K", "north"), (0, 0, "P", "south")])
+    before = e.state.position_key()
+    e.state.board.grid[4][3].top.cooldown = 2
+    assert e.state.position_key() != before
+    e.apply((4, 3, 0, 2, 3, 0))                          # moving is one of North's turns
+    assert e.state.board.grid[2][3].top.cooldown == 1
+    assert e.observe("north")[37, 2, 3] == pytest.approx(0.5) and e.observe("south")[37, 2, 3] == pytest.approx(0.5)
+
+
+def test_return_fire_at_range_and_long_power_shot(of_rules):
+    e = engine_for(of_rules, [(4, 3, "B", "north"), (2, 3, "B", "south"), (0, 7, "K", "south"), (7, 7, "K", "north"),
+                              (0, 0, "P", "south"), (7, 0, "P", "north")])
+    event = e.apply((4, 3, 0, 2, 3, 2))
+    assert [l["cause"] for l in event["losses"]] == ["ranged", "return_fire"]
+    e = engine_for(of_rules, [(4, 3, "B", "north"), (5, 3, "B", "north"), (2, 3, "R", "south"), (0, 7, "K", "south"),
+                              (7, 7, "K", "north"), (0, 0, "P", "south")])
+    event = e.apply((4, 3, 0, 2, 3, 2))
+    assert event["ranged"] == {"killed": "R", "power_shot": True}
+    assert e.state.board.grid[4][3].top.cooldown == 2
+
+
+def test_cooldown_is_validated(of_rules):
+    board = Board(8, 8)
+    board.grid[4][3].add_unit(Unit("P", "north", 1))
+    board.grid[7][7].add_unit(Unit("K", "north"))
+    board.grid[0][7].add_unit(Unit("K", "south"))
+    board.grid[0][0].add_unit(Unit("P", "south"))
+    with pytest.raises(ValueError):
+        Engine(rules=of_rules).set_state(GameState(board))

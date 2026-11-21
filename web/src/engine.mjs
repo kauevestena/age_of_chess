@@ -12,7 +12,7 @@ export const squareName = (index) =>
   "abcdefgh"[index % 8] + (8 - Math.floor(index / 8));
 export const actionKey = (action) => action.join(",");
 export const positionKey = (state) =>
-  `${state.turn}|${state.retreats.join(",")}|${state.kingMoves.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i])).join(";")}`;
+  `${state.turn}|${state.cooldown.join("")}|${state.retreats.join(",")}|${state.kingMoves.join(",")}|${state.board.map((sq, i) => physicalPosition(sq, state.layout[i])).join(";")}`;
 const inside = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
 const directions = [-1, 0, 1].flatMap((r) =>
   [-1, 0, 1].filter((c) => r || c).map((c) => [r, c]),
@@ -42,12 +42,13 @@ export function cloneState(state) {
     counts: { ...state.counts },
     retreats: [...state.retreats],
     kingMoves: [...state.kingMoves],
+    cooldown: [...state.cooldown],
     layout: [...state.layout],
     prepared: [...state.prepared],
   };
 }
 
-export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], kingMoves = [0, 0], mode = "warfare") {
+export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], kingMoves = [0, 0], mode = "warfare", cooldown = null) {
   if (!MODES.includes(mode)) throw Error(`Unknown ruleset: ${mode}`);
   activate({ mode });
   const state = {
@@ -55,6 +56,8 @@ export function studyState(board, turn = 1, retreats = [0, 0], layout = null, pr
     board: board.map((s) => [...s]),
     layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq)),
     kingMoves: [...kingMoves],
+    // Open Field: own turns before the Archer on each square may shoot beyond one square again.
+    cooldown: cooldown ? [...cooldown] : board.map(() => 0),
     prepared: [...prepared],
     turn,
     ply: 0,
@@ -83,6 +86,9 @@ export function validateState(s) {
   activate(s);
   if (!RULES.formations && s.board.some((sq) => Array.isArray(sq) && sq.length > 1))
     throw Error("This ruleset has no formations: one unit per square");
+  if (!Array.isArray(s.cooldown) || s.cooldown.length !== 64 || s.cooldown.some((n, i) =>
+    !Number.isInteger(n) || n < 0 || n > 3 || (n && !(s.board[i].length === 1 && code(s.board[i][0]) === "B"))))
+    throw Error("Only Archers carry a shot cooldown");
   if (
     !Array.isArray(s.retreats) ||
     s.retreats.length !== 2 ||
@@ -257,7 +263,8 @@ export function unfilteredActions(state) {
               if (!inside(rr, cc)) break;
               const dst = state.board[rr * 8 + cc];
               if (dst.length) {
-                if (side(dst[0]) !== owner)
+                // A long shot (beyond one square) waits out the shooter's cooldown.
+                if (side(dst[0]) !== owner && (dist === 1 || !state.cooldown[index]))
                   for (const target of contactSlots(index, rr * 8 + cc, dst, state.layout[rr * 8 + cc]))
                     if (ability.targets.includes(code(dst[target]))) add(rr, cc, target ? 8 : 2);
                 break;
@@ -458,10 +465,19 @@ export function transition(state, action, trusted = false) {
   };
   const remove = (sq, at, index, cause) => {
     const [unit] = sq.splice(index, 1);
+    if (!sq.length) next.cooldown[at] = 0;
     event.losses.push({ unit, at, slot: index, cause });
+  };
+  const carry = () => {
+    // A unit's cooldown travels with it; squares hold one unit whenever a cooldown is set.
+    if (!src.length) {
+      next.cooldown[to] = next.cooldown[from];
+      next.cooldown[from] = 0;
+    }
   };
   const advance = () => {
     dst.push(...src.splice(slot, 1));
+    carry();
     event.moved = true;
   };
   if (isPreparation(kind)) {
@@ -502,12 +518,22 @@ export function transition(state, action, trusted = false) {
     event.priestess = warper.index;
     event.priestessSlot = warper.slot;
     dst.push(...src.splice(slot, 1));
+    carry();
   }
   next.layout[from] = canonicalLayout(src, next.layout[from]);
   next.layout[to] = state.board[to].length < 2 ? defaultLayout(dst) : canonicalLayout(dst, next.layout[to]);
   next.prepared = [];
   priestessDeaths(next, event.losses);
   canonicalizeLayouts(next);
+  // After an army's order its Archers' cooldowns count down; a long shot (re)starts the shooter's.
+  next.board.forEach((cell, i) => {
+    if (!cell.length) next.cooldown[i] = 0;
+    else if (side(cell[0]) === state.turn && next.cooldown[i]) next.cooldown[i]--;
+  });
+  if (isShot(kind) && Math.max(Math.abs(rr - r), Math.abs(cc - c)) > 1 && !event.returnFire) {
+    next.cooldown[from] = Math.max(0, ...RULES.pieces.B.abilities.map((a) => a.cooldown));
+    event.longShot = true;
+  }
   const retreatIndex = state.turn === 1 ? 0 : 1;
   next.retreats[retreatIndex] =
     code(actor) === "K" && event.moved && (rr - r) * state.turn > 0

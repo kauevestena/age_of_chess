@@ -1,4 +1,12 @@
-import { readRecord, SAVE_KEY, SETTINGS_KEY } from "../src/records.mjs";
+import { createRecord, readRecord, SAVE_KEY, SETTINGS_KEY } from "../src/records.mjs";
+
+// A legal 36-order Open Field game (seeded random play) after which North's Archer on c3
+// can shoot the unit on c5, two squares away.
+const LONG_SHOT_GAME = [[6,6,0,5,5,0],[0,2,0,2,4,0],[6,1,0,4,1,0],[0,3,0,2,2,0],[6,3,0,4,2,0],[2,4,0,3,4,0],[4,1,0,2,0,0],
+  [2,2,0,4,4,0],[5,5,0,3,4,1],[0,6,0,3,5,0],[6,2,0,4,3,0],[3,5,0,6,4,1],[6,5,0,4,6,0],[1,4,0,3,2,0],[7,6,0,5,4,0],[1,3,0,2,3,0],
+  [4,2,0,3,2,1],[1,5,0,2,4,0],[7,3,0,5,5,0],[1,0,0,3,1,0],[4,6,0,2,5,0],[2,3,0,3,4,1],[2,5,0,0,5,1],[3,2,0,5,1,0],[6,7,0,4,5,0],
+  [3,1,0,4,1,0],[6,4,0,4,6,0],[0,0,0,2,0,1],[7,1,0,6,2,0],[5,1,0,6,0,1],[6,2,0,4,1,1],[1,2,0,3,2,0],[7,0,0,6,1,0],[4,1,0,5,1,0],
+  [7,2,0,5,2,0],[5,1,0,7,2,0]];
 
 // Open Field through the real lobby: rules picker, two- and three-square moves, no formations,
 // save and reload, the field guide, and an AI-versus-AI battle.
@@ -82,5 +90,34 @@ export async function openFieldChecks(browser, url, monitor, check, out) {
     await page.screenshot({ path: `${out}/open-field-spectator.png` });
   } finally {
     await context.close();
+  }
+
+  // Long shot and cooldown, from a real game position.
+  const record = createRecord(LONG_SHOT_GAME, { mode: "local", difficulty: "knight", humanSide: 1, ruleset: "open_field" });
+  check(readRecord(JSON.stringify(record)).state.turn === 1, "long-shot fixture replays legally");
+  const shotContext = await browser.newContext({ viewport: { width: 1440, height: 1100 }, reducedMotion: "reduce" });
+  await shotContext.addInitScript(({ record, saveKey, settingsKey }) => {
+    localStorage.setItem(saveKey, JSON.stringify(record));
+    localStorage.setItem(settingsKey, JSON.stringify({ sound: false, motion: "reduced", battles: "quick" }));
+  }, { record, saveKey: SAVE_KEY, settingsKey: SETTINGS_KEY });
+  const sp = await shotContext.newPage();
+  monitor(sp);
+  try {
+    const at = (i) => sp.locator(`[data-index="${i}"]`);
+    await sp.goto(url);
+    await sp.locator("#continue").click();
+    await sp.locator("#game").waitFor({ state: "visible" });
+    await at(42).click();
+    check((await sp.locator("#unit-facts").textContent()).includes("long shot ready"), "the Archer's long shot is ready");
+    await at(26).click();
+    await sp.getByRole("button", { name: /Ranged attack/ }).click();
+    await sp.waitForFunction(() => document.querySelector("#board").getAttribute("aria-busy") === "false");
+    check((await at(42).locator(".cooldown-badge").textContent()) === "⏳2", "the board shows a two-turn cooldown on the Archer");
+    check((await at(42).getAttribute("aria-label")).includes("long shot in 2 turns"), "the cooldown is announced to screen readers");
+    const after = readRecord(await sp.evaluate((key) => localStorage.getItem(key), SAVE_KEY)).state;
+    check(after.cooldown[42] === 2 && after.board[26].length === 0, "the long shot hit two squares away and started the cooldown");
+    await sp.screenshot({ path: `${out}/open-field-long-shot.png` });
+  } finally {
+    await shotContext.close();
   }
 }

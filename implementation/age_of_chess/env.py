@@ -8,7 +8,7 @@ from .movegen import gen_single_moves, gen_preparations, ALL_DIRS
 from .combat import resolve_melee, resolve_combat, attack_sector, canonical_layout
 from .utils import action_mask_from_legal, opponent, in_bounds, encode_action, is_preparation, is_shot, shot_slot
 
-OBSERVATION_SHAPE = (37, 8, 8)
+OBSERVATION_SHAPE = (38, 8, 8)
 
 class Engine:
     def __init__(self, ruleset_path="rulesets/default.yaml", *, rules=None):
@@ -140,6 +140,13 @@ class Engine:
         obs[28] = self.state.retreat_counts[opponent(agent)] / self.rules.game.commander_retreat_limit
         obs[35] = self.state.king_moves[agent] / self.rules.game.king_move_limit
         obs[36] = self.state.king_moves[opponent(agent)] / self.rules.game.king_move_limit
+        # Plane 37: remaining long-shot cooldown of every Archer (own and enemy), divided by its maximum.
+        longest = max((a.cooldown for a in self.rules.game.pieces["B"].abilities), default=0)
+        if longest:
+            for r, row in enumerate(self.state.board.grid):
+                for c, sq in enumerate(row):
+                    if sq.top and sq.top.cooldown:
+                        obs[37, r, c] = sq.top.cooldown / longest
         return obs
 
     def _canonicalize_layouts(self):
@@ -147,6 +154,17 @@ class Engine:
         for row in self.state.board.grid:
             for sq in row:
                 sq.layout = canonical_layout(sq.top, sq.bottom, sq.layout)
+
+    def _tick_cooldowns(self, side, action, kind, actor, event):
+        """After an army's order its Archers' cooldowns count down; a long shot (re)starts the shooter's."""
+        for row in self.state.board.grid:
+            for sq in row:
+                for unit in (sq.top, sq.bottom):
+                    if unit and unit.side == side and unit.cooldown:
+                        unit.cooldown -= 1
+        fr, fc, _, tr, tc, _ = action
+        if is_shot(kind) and max(abs(tr-fr), abs(tc-fc)) > 1 and not event["ranged"].get("return_fire"):
+            actor.cooldown = max(a.cooldown for a in self.rules.game.pieces["B"].abilities)
 
     def _warper(self, r, c, side):
         """(row, col, slot) of a friendly Warp-capable unit within range of (r, c)."""
@@ -295,6 +313,7 @@ class Engine:
         self.state.retreat_counts[side] = (self.state.retreat_counts[side]+1
             if code == "K" and event["moved"] and backward else 0)
         self.state.king_moves[side] = self.state.king_moves[side]+1 if code == "K" and event["moved"] else 0
+        self._tick_cooldowns(side, action, kind, actor, event)
         self.state.prepared = []
         self.state.to_move = opponent(side)
         self.state.move_count += 1
