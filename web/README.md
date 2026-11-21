@@ -1,6 +1,6 @@
 # Age of Chess — Warfare: browser game
 
-A complete static client for the canonical rules v5. The browser runs all rules,
+A complete static client for the canonical rules v6. The browser runs all rules,
 AI search, animation, audio synthesis and save management. There are no accounts,
 API keys, analytics, server requests for moves, or external runtime dependencies.
 All fonts, art and music ship with the game. No service worker is installed:
@@ -31,7 +31,7 @@ files; neither npm dependencies nor the research implementation are deployed.
   typography, and a responsive layout with touch and keyboard controls.
 - Deterministic attack previews, explicit ranged/melee selection, accessible
   A/B member and physical-arrangement buttons and legal-destination markers.
-- Cinematic melee exchanges, cavalry charges, arrow volleys, conversions,
+- Cinematic melee exchanges, cavalry charges, arrow volleys, warps,
   formation survivors, impact particles and unit deaths. Escape skips safely;
   Quick and reduced-motion modes shorten or remove motion.
 - Three original compositions: **Banners in the Mist**, **The Ashen March** and
@@ -65,7 +65,7 @@ the normal victory or draw conditions. All decisions still run locally.
 
 A spectator step completes up to three preparations and exactly one normal order.
 There is no turn cap, material adjudication, online service or automatic rematch.
-Rules v5 saves support all three modes; older rules versions require a new battle.
+Rules v6 saves support all three modes; older rules versions require a new battle.
 
 ## GitHub Pages
 
@@ -138,22 +138,38 @@ The score notes and instrumentation are in `src/audio.mjs`; unit art is in
 `src/art.mjs`. These are intentionally editable, text-based source assets.
 Audio activation follows [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices).
 
-## Rules v5 Kings, veterans and compatibility
+## Open Field ruleset
 
-Kings are unarmed, immune to ranged attacks and conversion, and can retreat only
-with an enemy within two squares (including diagonals and adjacent enemies).
-In every arrangement, a King's escort meets front/flank attackers first. Matching
-front attacks lose; matching flank attacks cancel attacker and escort while the
-King lives. Counters stay absolute; rear exposure and ready reserves are unchanged.
-The King panel shows both movement streaks: the third backward move or fourth King
-move forfeits. Another unit's order resets both; preparations affect neither.
+The war camp's Rules picker offers Warfare (the default) or Open Field: no formations,
+units move and attack over two squares (Cavalry three, the King one) passing friendly
+units, and an Archer beside a friendly Archer gets the power shot. Every mode — solo,
+local and spectator — works with either ruleset. Game states carry their ruleset and the
+engine switches rules to match, so the AI worker, saves, undo and review follow each
+game. Saves record `config.ruleset`; older saves load as Warfare. The field guide has an
+Open Field tab; the tutorial teaches Warfare. See
+[the Open Field rules](../rulesets/OPEN_FIELD.md) and
+[its validation and simulation review](review/OPEN_FIELD.md).
 
-A non-King reaching the enemy back rank retains backward and diagonal movement
-permanently. A ↶ mark and unit details identify each veteran, including in formations,
-replay and after conversion. All Archer shots now reach exactly one square,
-including double-Archer power shots. The tutorial includes four new lessons.
+## Rules v6 Warp, the King's row and compatibility
 
-See [the validation and 2,000-game simulation review](review/KINGS_V5.md).
+The Priestess warps instead of converting: select her, select a marked enemy within two
+squares (no line of sight needed), then choose any empty square. A formation member can
+be warped too: a dialog asks which one, and the formation breaks. Nothing dies and nothing
+changes sides. Kings, Priestesses and formations that hold a King cannot be warped. The effect plays on the
+board as a ring of light rather than a cinematic encounter.
+
+Non-King units advance toward the row where the enemy King stands, straight or
+diagonally, and sideways toward him once level. There are no veterans, enemy-half
+sidesteps or frontal evasion steps. Kings are unarmed, immune to ranged attacks and
+Warp, and can retreat only with an enemy within two squares. In every arrangement,
+a King's escort meets front/flank attackers first. The King panel shows both
+movement streaks: the third backward move or fourth King move forfeits.
+
+Three tutorial lessons were replaced (Warp, level with the King, follow the King);
+the tutorial still has 18 exercises. The browser AI searches only the best three Warp
+destinations per warpable unit (farthest from its King's row) to keep the search bounded.
+
+See [the validation and 2,000-game simulation review](review/WARP_V6.md).
 
 ### Formation controls and saves
 
@@ -176,5 +192,5 @@ formations. It does not exhaustively search every combination of three preparati
 and future orders; this is a heuristic opponent, not a balance proof.
 
 Old v4 and earlier records are explicitly rejected because the same orders now
-have different outcomes. Start a new battle under v5. The static build and all
+have different outcomes. Start a new battle under v6. The static build and all
 original artwork, typography and locally synthesized music remain self-contained.

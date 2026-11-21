@@ -1,22 +1,22 @@
 game:
   name: Age of Chess – Warfare
-  version: 5
+  version: 6
+  mode: warfare
+  formations: true
+  advance_reference: enemy_king_row
   attack_all_directions: true
   lone_commander_loses: true
   commander_retreat_limit: 3
   king_move_limit: 4
-  permanent_backward_movement: true
   king_formation_guard: escort_first
   archer_return_fire: true
   same_type_stance: guarded_center
-  frontal_enemy_sidesteps: true
   cavalry_pass_single_ally: true
   formation_rearrangements: 3
   formation_combat: ready_reserve
   board:
     rows: 8
     cols: 8
-    attack_field_depth: 4
   minimal_loss:
     enabled: true
     preserve_order: [R, N, B, P, Q]
@@ -65,8 +65,9 @@ game:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
         retreat_trigger: adjacent_enemy
       abilities:
-        - name: convert
-          range: 1
+        - name: warp
+          range: 2
+          breaks_formations: true
           targets: [P, N, B, R]
       value: 4
     K:
@@ -74,8 +75,6 @@ game:
       class: king
       move:
         steps: [[-1, -1], [-1, 0], [-1, 1]]
-        attack_field_sideways: false
-        last_rank_all_directions: false
         retreat_trigger: nearby_enemy
         threat_radius: 2
       abilities: []

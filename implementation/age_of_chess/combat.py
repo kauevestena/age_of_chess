@@ -3,7 +3,7 @@ POSITIONS = (("N", "S"), ("S", "N"), ("W", "E"), ("E", "W"))
 
 
 def canonical_layout(top, bottom, layout):
-    return -1 if bottom is None else layout & 2 if (top.code, top.veteran) == (bottom.code, bottom.veteran) else layout
+    return -1 if bottom is None else layout & 2 if top.code == bottom.code else layout
 
 
 def attack_sector(from_pos, to_pos, defender_side):

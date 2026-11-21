@@ -13,7 +13,7 @@ This project includes simple baselines, a self‑play Gym wrapper, SB3 training 
 
 ## PettingZoo AEC env
 - Entry point: `implementation/age_of_chess/pettingzoo_env.py` → `age_of_chess_v1(...)`
-- Observation: `(41, 8, 8)` planes (channel‑first)
+- Observation: `(37, 8, 8)` planes (channel‑first)
 - Discrete action space encodes `(from_row, from_col, slot, to_row, to_col, move_type)`
 - `infos[agent]["action_mask"]` is provided on every turn.
 
@@ -76,15 +76,15 @@ python -m implementation.league.report
 
 ## Rewards and versioning
 
-Rewards are terminal-only and zero-sum: win +1, loss −1, draw 0. Conversions and
+Rewards are terminal-only and zero-sum: win +1, loss −1, draw 0. Warps and
 captures do not pay bonuses. A ply cap is truncation, not a draw or a reward win.
-Old 12/27/29/35-plane checkpoints and old action IDs are incompatible and must be retrained.
+Old 12/27/29/35/41-plane checkpoints and old action IDs are incompatible and must be retrained.
 Use `engine.state.winner` and `reason`, never reward totals, for adjudication.
-The 41-plane observation encodes A/B classes, arrangements, preparations, remaining
-budget, individual veteran flags and both King movement/retreat counters; full repetition history is in infos. Actions use
+The 37-plane observation encodes A/B classes, arrangements, preparations, remaining
+budget and both King movement/retreat counters; full repetition history is in infos. Actions use
 nine kinds (73,728 IDs). A preparation keeps the current player and pays zero reward;
 the normal order ends that turn. Opponent wrappers finish all preparations before
-returning control. Greedy uses a bounded defensive preparation planner.
+returning control. Greedy uses a bounded defensive preparation planner. Random, Greedy and Lookahead treat all Warps of one target (and member) as a single option; Greedy and Lookahead exile the unit to the square farthest from their King's row (`agents.best_warp`) and credit a Warp with `WARP_WEIGHT` × the unit's value per row gained, always below a Pikeman capture.
 
 Core `RandomAgent`/`GreedyAgent` receive an Engine and return action tuples. The
 league's policy interface receives the AEC environment and returns an encoded ID.

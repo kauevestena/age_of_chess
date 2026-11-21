@@ -1,4 +1,4 @@
-"""Independent contracts for the unarmed King, escort and veteran rules."""
+"""Independent contracts for the unarmed King and royal escort (introduced in v5)."""
 import copy
 from pathlib import Path
 import numpy as np
@@ -63,47 +63,15 @@ def test_flank_escort_sacrifice_preserves_king_and_other_support(position):
 
 @pytest.mark.parametrize("owner", ["north","south"])
 @pytest.mark.parametrize("code", list("PNBRQ"))
-def test_last_rank_ability_is_permanent_and_copied(position,owner,code):
-    row,end,back = (1,0,1) if owner=="north" else (6,7,6)
+def test_far_rank_grants_no_permanent_ability(position,owner,code):
+    # v6 (C): reaching the enemy back rank leaves no mark and no backward movement.
+    row,end = (1,0) if owner=="north" else (6,7)
     e=position([(row,3,code,owner)],side=owner)
-    event=e.apply((row,3,0,end,3,0))
-    assert event["veteran_unlocked"] and e.state.board.grid[end][3].top.veteran
+    e.apply((row,3,0,end,3,0))
+    assert not hasattr(e.state.board.grid[end][3].top,"veteran")
     e.state.to_move=owner
-    e.apply((end,3,0,back,4,0))
-    e.state.to_move=owner
-    deeper=back+(1 if owner=="north" else -1)
-    assert (back,4,0,deeper,5,0) in e.legal_actions()
-    assert e.clone().state.board.grid[back][4].top.veteran
-    if code=="N": assert (back,4,0,deeper+(1 if owner=="north" else -1),6,0) in e.legal_actions()
-
-def test_capture_unlocks_but_failed_attack_does_not(position):
-    e=position([(1,3,"P","north"),(0,3,"B","south")])
-    assert e.apply((1,3,0,0,3,1))["veteran_unlocked"]
-    e=position([(1,3,"N","north"),(0,3,"PK","south")])
-    assert not e.apply((1,3,0,0,3,1))["veteran_unlocked"]
-
-def test_veteran_identity_survives_formation_and_conversion(position):
-    e=position([(1,3,"P","north"),(0,3,"P","north"),(2,3,"Q","south")])
-    e.state.board.grid[1][3].top.veteran=False
-    e.state.to_move="north"
-    e.apply((0,3,0,1,3,0))
-    sq=e.state.board.grid[1][3]
-    assert not sq.top.veteran and sq.bottom.veteran
-    e.state.to_move="north"
-    assert (1,3,0,1,3,5) in e.legal_actions()  # Same class, different abilities: swap matters.
-    before=e.state.position_key(); e.apply((1,3,0,1,3,5)); assert e.state.position_key()!=before
-    e.apply((1,3,1,2,4,0))
-    assert not e.state.board.grid[1][3].top.veteran
-    e.apply((2,3,0,2,4,3))
-    assert e.state.board.grid[2][4].top.veteran and e.state.board.grid[2][4].top.side=="south"
-
-@pytest.mark.parametrize("middle,allowed", [("",True),("P",True),("PP",False),("enemy",False)])
-def test_veteran_cavalry_backwards_passage(position,middle,allowed):
-    pieces=[(2,2,"N","north")]
-    if middle: pieces.append((3,3,"P" if middle=="enemy" else middle,"south" if middle=="enemy" else "north"))
-    e=position(pieces); e.state.board.grid[2][2].top.veteran=True
-    assert ((2,2,0,4,4,0) in e.legal_actions())==allowed
-    assert (2,2,0,2,4,0) not in e.legal_actions()
+    assert not any(a[:3]==(end,3,0) and (a[3]-end)*(1 if owner=="north" else -1)>0
+                   for a in e.legal_actions())
 
 def test_unarmed_king_and_peril_are_absolute(position,rules):
     for other in "PNBRQK":
@@ -112,7 +80,6 @@ def test_unarmed_king_and_peril_are_absolute(position,rules):
     for row,col,allowed in [(1,1,True),(2,2,True),(3,3,False)]:
         e=position([(0,3,"K","north"),(row,3-col,"P","south")])
         assert ((0,3,0,1,3,0) in e.legal_actions())==allowed
-        assert not e.state.board.grid[0][3].top.veteran
         assert not any(a[-1]==1 and a[:2]==(0,3) for a in e.legal_actions())
 
 def test_four_king_moves_forfeit_across_opponent_turns(position):
@@ -137,15 +104,13 @@ def test_counters_reset_independently_and_preparations_preserve_both(position):
     e.apply((6,1,0,5,1,0))
     assert e.state.king_moves["north"]==e.state.retreat_counts["north"]==0
 
-def test_v5_observation_identity_validation_and_greedy_avoid_forfeit(position):
+def test_observation_king_counters_validation_and_greedy_avoid_forfeit(position):
     e=position([(4,3,"K","north"),(6,1,"PN","north")])
-    e.state.king_moves["north"]=3; e.state.board.grid[6][1].bottom.veteran=True
+    e.state.king_moves["north"]=3
     obs=e.observe("north")
-    assert obs.shape==(41,8,8) and obs[36,6,1]==1 and np.allclose(obs[39],.75)
-    assert e.observe("south")[38,6,1]==1
+    assert obs.shape==(37,8,8) and np.allclose(obs[35],.75) and np.allclose(obs[36],0)
+    assert np.allclose(e.observe("south")[36],.75)
     clone=e.clone(); clone.state.king_moves["north"]=0
-    assert clone.state.position_key()!=e.state.position_key()
-    clone=e.clone(); clone.state.board.grid[6][1].bottom.veteran=False
     assert clone.state.position_key()!=e.state.position_key()
     choice=GreedyAgent(1).select(e)
     assert e._apply_on_copy(choice).state.winner!="south"
@@ -161,12 +126,12 @@ def test_all_archers_range_one_and_kings_immune(position,stack):
     e=position([(4,3,stack,"north"),(3,3,"R" if stack=="BB" else "P","south")])
     assert any(a[-1] in (2,8) for a in e.legal_actions())
     q=position([(4,3,"Q","north"),(3,3,"K","south")])
-    assert (4,3,0,3,3,3) not in q.legal_actions()
+    assert not any(a[-1]==3 for a in q.legal_actions())
 
-def test_v5_schema_rejects_obsolete_rules(tmp_path):
+def test_schema_rejects_obsolete_rules(tmp_path):
     original=yaml.safe_load(Path("rulesets/default.yaml").read_text())
     for path,value in [(('version',),4),(('king_move_limit',),3),
-        (('king_formation_guard',),'simultaneous'),(('pieces','K','move','last_rank_all_directions'),True),
+        (('king_formation_guard',),'simultaneous'),(('frontal_enemy_sidesteps',),True),(('pieces','Q','abilities',0,'name'),'convert'),
         (('pieces','B','abilities',0,'range'),2),(('pieces','B','abilities',1,'range'),2),
         (('combat','single','K','P'),'win')]:
         data=copy.deepcopy(original); target=data['game']

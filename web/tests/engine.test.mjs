@@ -143,16 +143,25 @@ test("ranged rays stop at a friendly unit; power shot retains stack order", () =
   assert.equal(shot.state.reason, "lone_commander");
   assert(!has(shot.state, a(36, 28, 2)));
 });
-test("conversion is solitary and changes direction without moving the Priestess", () => {
+test("Warp is solitary, moves the target to an empty square and leaves the Priestess alone", () => {
   const s = setup([
     [36, [1, 5]],
     [35, [-2]],
     [28, [-3, -1]],
   ]);
-  assert(!has(s, a(36, 28, 3, 1)));
-  const out = transition(s, a(36, 35, 3, 1));
+  assert(!has(s, a(35, 28, 3)), "occupied destinations are not allowed");
+  const out = transition(s, a(35, 16, 3));
   assert.deepEqual(out.state.board[36], [1, 5]);
-  assert.deepEqual(out.state.board[35], [2]);
+  assert.deepEqual(out.state.board[35], []);
+  assert.deepEqual(out.state.board[16], [-2]);
+  assert.deepEqual(out.event.losses, []);
+  assert.equal(out.state.turn, -1);
+  // Formation members can be warped one at a time; the other stays behind alone.
+  const broken = transition(s, a(28, 16, 3, 1));
+  assert.deepEqual(broken.state.board[28], [-3]);
+  assert.deepEqual(broken.state.board[16], [-1]);
+  assert.equal(broken.state.layout[28], -1);
+  assert.equal(broken.event.warpedSlot, 1);
 });
 test("opposing Priestesses die simultaneously, including bottom slots", () => {
   const s = setup([
@@ -176,7 +185,7 @@ test("Commander capture wins even when a bottom defender remains", () => {
   assert.deepEqual(out.state.board[20], [1]);
   assert.deepEqual(out.state.board[28], [-3]);
 });
-test("retreat triggers, enemy half and last rank have distinct permissions", () => {
+test("retreat triggers and the removed sideways permissions", () => {
   assert(
     !has(
       setup([
@@ -205,7 +214,11 @@ test("retreat triggers, enemy half and last rank have distinct permissions", () 
       a(19, 18),
     ),
   );
-  assert(has(setup([[19, [1]]]), a(19, 18)));
+  // v6: no sideways step in the enemy half; the Priestess steps only while an enemy is adjacent.
+  assert(!has(setup([[19, [1]]]), a(19, 18)));
+  assert(has(setup([[19, [1]]]), a(19, 11)));
+  assert(!has(setup([[19, [5]]]), a(19, 18)));
+  assert(has(setup([[19, [5]], [27, [-1]]]), a(19, 18)));
 });
 test("third exact position repeats as a draw, including side and stack order", () => {
   const s = setup([[19, [1]]]);

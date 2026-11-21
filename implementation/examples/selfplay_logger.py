@@ -32,8 +32,8 @@ def pretty_move(event):
         flag = " PS" if rng.get("power_shot") else ""
         return f"{actor} {sq_from}~{sq_to} ({tgt}{flag})"
     if event["atype"] == 3:
-        conv = event.get("convert",{}).get("converted","?")
-        return f"{actor} {sq_from}>{sq_to} (convert {conv})"
+        warped = event.get("warp",{}).get("unit","?")
+        return f"{actor} warps {warped} {sq_from}>{sq_to}"
     return f"{actor} {sq_from}?{sq_to}"
 
 def main():

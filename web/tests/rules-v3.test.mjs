@@ -81,41 +81,18 @@ test("guarded stance: all sectors, ordinary classes, owners and formation slots"
             assert.equal(event.moved, alive && !formation);
           }
 });
-test("home-half frontal evasion: empty and single ally allowed, full cell blocked", () => {
+test("a frontal enemy no longer grants a sideways step", () => {
   for (const owner of [1, -1])
     for (const code of [1, 2, 3, 4])
       for (const slot of [0, 1]) {
         const from = owner === 1 ? 43 : 19,
           front = from - owner * 8;
         const source = slot ? [owner, owner * code] : [owner * code];
-        let s = setup(
-          [
-            [from, source],
-            [front, [-owner]],
-            [from - 1, [owner]],
-            [from + 1, [owner, owner]],
-          ],
-          owner,
-        );
-        assert(has(s, a(from, from - 1, 0, slot)));
-        assert(!has(s, a(from, from + 1, 0, slot)));
-        s = setup(
-          [
-            [from, source],
-            [front - 1, [-owner]],
-          ],
-          owner,
-        );
-        assert(!has(s, a(from, from + 1, 0, slot)));
-        s = setup(
-          [
-            [from, source],
-            [front, [-owner]],
-          ],
-          owner,
-        );
-        assert(has(s, a(from, from + 1, 0, slot)));
-        assert(!has(s, a(from, from + 2, 0, slot)));
+        for (const enemy of [front, front - 1]) {
+          const s = setup([[from, source], [enemy, [-owner]], [from - 1, [owner]]], owner);
+          assert(!has(s, a(from, from - 1, 0, slot)));
+          assert(!has(s, a(from, from + 1, 0, slot)));
+        }
       }
 });
 test("Cavalry passes a single ally atomically, with unique paths blocked by full cells or enemies", () => {
@@ -210,7 +187,6 @@ test("non-retreat orders reset counts; formation breakthrough and capture have c
 test("last supporting units trigger lone-Commander losses or simultaneous draw", () => {
   for (const [actor, target, kind, winner] of [
     [1, 3, 1, 1],
-    [5, 4, 3, 1],
     [3, 3, 2, 0],
   ]) {
     const s = setup([

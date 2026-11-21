@@ -6,6 +6,8 @@ import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { spectatorChecks } from "./spectator.mjs";
 import { formationChecks } from "./formations-browser.mjs";
+import { warpChecks } from "./warp-browser.mjs";
+import { openFieldChecks } from "./open-field-browser.mjs";
 import { createRecord, SAVE_KEY } from "../src/records.mjs";
 const require = createRequire(import.meta.url),
   { chromium } = require("playwright");
@@ -215,18 +217,20 @@ try {
     "power shot preserves both slots",
   );
   await page.locator("#next-lesson").click();
-  await cell(page, 35).click();
-  await page.getByRole("button", { name: /Convert unit/ }).click();
-  await page.locator("#battle-dialog").waitFor({ state: "visible" });
-  await page.waitForTimeout(1000);
-  await page.screenshot({ path: resolve(out, "combat-conversion.png") });
+  // Warp: Priestess is preselected; the enemy is marked, then any empty square is offered.
+  check((await cell(page, 34).getAttribute("class")).includes("warp-target"), "Warp marks an enemy two squares away");
+  await cell(page, 34).click();
+  check((await cell(page, 2).getAttribute("class")).includes("warp-destination"), "Warp offers empty destination squares");
+  check(!(await cell(page, 36).getAttribute("class")).includes("warp-destination"), "occupied squares are no Warp destination");
+  await page.screenshot({ path: resolve(out, "warp-destination.png") });
+  await cell(page, 2).click();
   await waitIdle(page);
   check(
-    (await cell(page, 35).getAttribute("aria-label")).includes(
-      "Azure Host Cavalry",
-    ),
-    "completed conversion cinematic updates ownership",
+    (await cell(page, 34).getAttribute("aria-label")).includes("empty") &&
+      (await cell(page, 2).getAttribute("aria-label")).includes("Ember Host Cavalry"),
+    "Warp moves the unit and keeps its owner",
   );
+  await page.screenshot({ path: resolve(out, "warp-result.png") });
   // New rules are learned through the real board and cinematic flow.
   await page.locator("#next-lesson").click();
   check(
@@ -261,18 +265,17 @@ try {
     "guard kills attacker and preserves formation",
   );
   await page.locator("#next-lesson").click();
+  check((await cell(page, 35).getAttribute("class")).includes("legal-target"), "level with the King: sideways step toward him");
   check(
-    !(await cell(page, 43).getAttribute("class")).includes("legal-target"),
-    "full formation blocks sidestep",
+    !(await cell(page, 33).getAttribute("class")).includes("legal-target") &&
+      !(await cell(page, 26).getAttribute("class")).includes("legal-target"),
+    "no sideways step away from the King and no step off his row",
   );
-  await cell(page, 45).click();
-  await page.getByRole("button", { name: /Join formation/ }).click();
+  await cell(page, 35).click();
   await waitIdle(page);
   check(
-    (await cell(page, 45).getAttribute("aria-label")).includes(
-      "Azure Host Pikeman",
-    ),
-    "sidestep joins underneath ally",
+    (await cell(page, 35).getAttribute("aria-label")).includes("Azure Host Pikeman"),
+    "the Pikeman steps along the King's row",
   );
   await page.locator("#next-lesson").click();
   await cell(page, 35).click();
@@ -328,10 +331,10 @@ try {
   await waitIdle(page);
   check((await cell(page, 28).getAttribute("aria-label")).includes("empty") && (await cell(page, 36).getAttribute("aria-label")).includes("Pikeman"), "rear attack cannot reverse Cavalry counter");
   await page.locator("#next-lesson").click();
-  await cell(page, 13).click(); await waitIdle(page);
-  check((await cell(page,13).getAttribute("aria-label")).includes("veteran"), "backward ability stays after leaving the last rank");
-  check((await cell(page,13).locator('[data-slot="0"]').getAttribute("data-veteran")) === "true", "veteran flag is rendered per unit");
-  await page.screenshot({path:resolve(out,"veteran-return.png"),fullPage:true});
+  check((await cell(page,21).getAttribute("class")).includes("legal-target"), "a unit the King has passed may step back toward him");
+  await cell(page, 21).click(); await waitIdle(page);
+  check((await cell(page,21).getAttribute("aria-label")).includes("Pikeman") && !(await cell(page,21).getAttribute("aria-label")).includes("veteran"), "no veteran status is kept");
+  await page.screenshot({path:resolve(out,"follow-the-king.png"),fullPage:true});
   await page.locator("#next-lesson").click();
   await cell(page,28).click(); await page.getByRole("button",{name:/Melee attack/}).click();
   await page.locator("#battle-dialog").waitFor({state:"visible"});
@@ -425,7 +428,7 @@ try {
   await page.locator("#continue").click();
   check(
     (await page.locator("#toast").textContent()).includes(
-      "Rules v5 requires a new battle",
+      "Rules v6 requires a new battle",
     ) && (await page.locator("#lobby").isVisible()),
     "old autosave explains breaking rules version",
   );
@@ -611,6 +614,8 @@ try {
   );
   await limited.close();
   await formationChecks(browser, url, monitor, check, out);
+  await warpChecks(browser, url, monitor, check, out);
+  await openFieldChecks(browser, url, monitor, check, out);
   await spectatorChecks(browser, url, monitor, check, out);
   check(errors.length === 0, `browser errors: ${errors.join("; ")}`);
   check(badRequests.length === 0, `failed assets: ${badRequests.join("; ")}`);

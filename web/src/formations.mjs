@@ -5,9 +5,9 @@ export const isPreparation = (kind) => kind >= 4 && kind <= 7;
 export const isShot = (kind) => kind === 2 || kind === 8;
 export const shotSlot = (kind) => kind === 8 ? 1 : 0;
 const code = (unit) => "PNBRQK"[Math.abs(unit) - 1];
-export const canonicalLayout = (square, layout, veteran = []) => square.length < 2 ? -1
-  : square[0] === square[1] && !!veteran[0] === !!veteran[1] ? layout & 2 : layout;
-export const defaultLayout = (square, veteran) => canonicalLayout(square, square[0] > 0 ? 0 : 1, veteran);
+export const canonicalLayout = (square, layout) => square.length < 2 ? -1
+  : square[0] === square[1] ? layout & 2 : layout;
+export const defaultLayout = (square) => canonicalLayout(square, square[0] > 0 ? 0 : 1);
 export const layoutLabel = (layout) => `A ${POSITIONS[layout][0]} · B ${POSITIONS[layout][1]}`;
 
 export function attackSector(from, to, defender) {
@@ -66,9 +66,9 @@ export function meleeAllowed(actor, defenders, from, to, layout) {
 }
 
 // Repetition follows physical unit positions, not interchangeable A/B labels.
-export function physicalPosition(square, layout, veteran = []) {
+export function physicalPosition(square, layout) {
   const cells = [0, 0, 0, 0, 0];
-  const identity = slot => square[slot] ? square[slot] + Math.sign(square[slot]) * 6 * Number(!!veteran[slot]) : 0;
+  const identity = slot => square[slot] ?? 0;
   if (square.length < 2) cells[0] = identity(0);
   else POSITIONS[layout].forEach((position, slot) => { cells[1 + ["N", "S", "W", "E"].indexOf(position)] = identity(slot); });
   return cells.join(",");

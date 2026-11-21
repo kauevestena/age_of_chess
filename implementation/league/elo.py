@@ -6,7 +6,7 @@ from collections import defaultdict
 
 def score_for_north(result):
     """Only explicitly adjudicated v5 records contribute to scores/Elo."""
-    if result.get("rules_version") != 5 or result.get("truncated") or not result.get("terminated"):
+    if result.get("rules_version") != 6 or result.get("truncated") or not result.get("terminated"):
         return None
     winner = result.get("winner")
     if winner == "draw": return 0.5

@@ -1,0 +1,4 @@
+range 1, formation breaking off: Warp-using Greedy scores 0.522 over 640 games (wins 334, losses 306, other 0)
+range 2, formation breaking off: Warp-using Greedy scores 0.639 over 640 games (wins 408, losses 230, other 2)
+range 1, formation breaking on: Warp-using Greedy scores 0.522 over 640 games (wins 334, losses 306, other 0)
+range 2, formation breaking on: Warp-using Greedy scores 0.652 over 640 games (wins 415, losses 220, other 5)

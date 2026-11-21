@@ -1,8 +1,11 @@
 # Age of Chess – Warfare: rules v6 specification
 
-**Status:** draft for approval, written 2026-11-13. Nothing here is implemented.
-`RULES.md` and `default.yaml` still describe rules v5, which stay in force until this
-specification is approved and implemented.
+**Status:** approved and implemented. `RULES.md`, `default.yaml`, both engines and the
+browser game now describe rules v6; see the
+[implementation and simulation review](../web/review/WARP_V6.md). The three points listed
+as needing a final yes in section 11 were adopted as written. The text below is the
+specification as approved, apart from the clarifications marked *(implementation note)* and
+the amendment in section 12, which supersedes W2, W5 and the Warp immunity statements.
 
 **Baseline:** rules v5. Every rule not mentioned in this document is unchanged.
 Rule IDs (M1–M10, W1–W9) are meant to be cited by tests.
@@ -134,7 +137,7 @@ This section replaces the conversion paragraph of "Ranged attacks and conversion
 order: it is the turn's single order, it may follow up to three formation
 rearrangements like any other order, and the Priestess does not move.
 
-**W2 – Target.** One enemy Pikeman, Cavalry, Archer or Heavy Infantry that is solitary
+**W2 – Target.** *(Superseded by section 12: range two, formation members.)* One enemy Pikeman, Cavalry, Archer or Heavy Infantry that is solitary
 and stands on one of the eight squares around the Priestess.
 
 **W3 – Destination.** Any empty square on the board, chosen by the warping player.
@@ -145,7 +148,7 @@ empty, even when it is open, so it is not a destination.
 a solitary unit. It keeps its owner and class. No combat takes place and nothing dies.
 The Priestess, her companion and their arrangement are unchanged.
 
-**W5 – Immune.** Kings, Priestesses, both members of any formation, and friendly units
+**W5 – Immune.** *(Superseded by section 12.)* Kings, Priestesses, both members of any formation, and friendly units
 cannot be warped.
 
 **W6 – Either subcell.** A Priestess may warp from either subcell of a formation,
@@ -434,8 +437,10 @@ over actions would warp almost every time a target is adjacent, and to a random 
   Warps of one target as one option. The destination is the empty square that leaves
   the warped unit the largest row gap to its reference row, with ties broken by
   distance from the warping side's King and then by seeded random choice.
+  *(Implementation note: "distance" means Chebyshev distance and larger is preferred, so
+  the unit is exiled as far from the warper's King as possible.)*
 - **Browser AI:** search only a few destinations per target, chosen by the same
-  heuristic, so the search stays bounded.
+  heuristic, so the search stays bounded. *(Implementation note: three per target.)*
 
 Results will describe these heuristics, not expert Warp play.
 
@@ -480,3 +485,38 @@ Proposed earlier and not part of v6:
   information for this decision.
 - **Let a single Archer shoot Heavy Infantry.** Deferred until v6 has been measured,
   because Warp already adds pressure on solitary Heavy Infantry.
+
+## 12. Amendment: Warp range two and breaking formations
+
+Approved after the first implementation. It changes W2 and W5 and adds two settings.
+
+**W2′ – Target.** One enemy Pikeman, Cavalry, Archer or Heavy Infantry standing within
+**two squares** of the Priestess (Chebyshev distance one or two). No line is needed.
+The target may be solitary, or a member of a formation that holds no King.
+
+**W5′ – Immune.** Kings, Priestesses, any formation that holds a King (both members),
+and friendly units. In a formation with a Priestess, only the companion can be warped.
+
+**W4′ – Effect.** The chosen member is lifted from its square and set down on the empty
+destination as a solitary unit. The member left behind becomes a singleton without layout.
+Everything else in W4 is unchanged.
+
+**Settings.** `pieces.Q.abilities[warp]` takes `range` (1 or 2) and `breaks_formations`
+(boolean, default false). The shipped ruleset uses `range: 2` and
+`breaks_formations: true`; `range: 1` with `breaks_formations: false` reproduces the
+original v6 rule. Other abilities must keep `range: 1` and cannot set `breaks_formations`.
+
+**Actions.** Kind 3 keeps the six-field tuple. `from` is the warped unit's square, `slot` is
+the warped member (0 for a solitary unit, 0 or 1 in a formation), `to` is the empty
+destination. The action IDs and mask size are unchanged. Interfaces ask for the Priestess,
+then the enemy, then (for a formation) the member, then the destination.
+
+**Agents.** All Warps of one warped unit (square and member) are one option for
+tie-breaking. Greedy and Lookahead credit a Warp with `WARP_WEIGHT` (0.1) × the unit's value
+× the rows it is sent beyond the warper's King row ÷ 7, always below a Pikeman capture. The
+browser AI searches three destinations per warpable unit.
+
+**Measured effect** (heuristic agents; see the review): Warp use rises from 0.34 to 2.96 per
+game, games lengthen by about a fifth, and a Greedy agent that warps beats one that never
+warps 65.2% of the time, against 52.2% under the original limits. Range accounts for almost
+all of it; breaking formations adds little with these agents.

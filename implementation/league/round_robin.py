@@ -5,7 +5,7 @@ from typing import Optional, Dict, List, Tuple, Any
 
 from implementation.age_of_chess.pettingzoo_env import age_of_chess_v0
 from implementation.age_of_chess.utils import encode_action
-from implementation.age_of_chess.agents import GreedyAgent
+from implementation.age_of_chess.agents import GreedyAgent, RandomAgent
 from .elo import compute_elo, rating_ci, score_for_north
 
 # Optional imports (skip if unavailable)
@@ -37,17 +37,15 @@ class Policy:
         raise NotImplementedError
 
 class RandomPolicy(Policy):
+    """Uniform over legal options; all Warps of one target count as a single option."""
     def __init__(self):
-        import random
         self.name = "Random"
-        self.rng = random.Random()
-    def reset(self, seed): self.rng.seed(seed)
+        self._agent = RandomAgent()
+        self.rng = self._agent.rng
+    def reset(self, seed): self._agent.rng.seed(seed)
     def select(self, env):
-        mask = env.infos[env.agent_selection].get("action_mask")
-        legal = [i for i,m in enumerate(mask) if m==1] if mask is not None else []
-        if not legal:
-            return None
-        return self.rng.choice(legal)
+        act = self._agent.select(env.unwrapped.engine)
+        return None if act is None else encode_action(*act)
 
 class GreedyPolicyWrapper(Policy):
     def __init__(self):
@@ -204,7 +202,7 @@ def run_league(ruleset: str = "rulesets/default.yaml", games_per_pair: int = 4, 
                     "winner": res.winner,
                     "rewards": res.rewards,
                     "steps": res.steps,
-                    "rules_version": 5,
+                    "rules_version": 6,
                     "terminated": res.terminated, "truncated": res.truncated,
                     "reason": res.reason, "seed": seed+k//2,
                 }
