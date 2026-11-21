@@ -14,6 +14,13 @@ the royal escort and the combat table are unchanged. See the
 [v6 specification](rulesets/RULES_V6_SPEC.md) and the
 [v6 implementation and simulation review](web/review/WARP_V6.md).
 
+**Open Field** is a second ruleset: no formations; every unit except the King moves and
+attacks over up to two squares (Cavalry three), passing friendly units; an Archer beside a
+friendly Archer gets the power shot. Pick it under Rules in the browser's war camp, or use
+`Engine("rulesets/open_field.yaml")` / `age_of_chess_v1("rulesets/open_field.yaml")` in
+Python. See the [Open Field rules](rulesets/OPEN_FIELD.md) and its
+[validation and simulation review](web/review/OPEN_FIELD.md).
+
 ## Browser game
 
 The [medieval browser client](web/README.md) provides solo play against three AI

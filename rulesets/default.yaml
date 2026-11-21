@@ -1,6 +1,8 @@
 game:
   name: Age of Chess – Warfare
   version: 6
+  mode: warfare
+  formations: true
   advance_reference: enemy_king_row
   attack_all_directions: true
   lone_commander_loses: true

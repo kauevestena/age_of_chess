@@ -39,6 +39,7 @@ def play(task):
     north_name,south_name=(name_b,name_a) if swap else (name_a,name_b)
     engine=Engine(rules=_RULES)
     actions=Counter();losses=Counter();warps=Counter();warp_rows=[];stacking=0;minimal=0;royal_guards=0
+    power_shots=0;reach=Counter()
     prior_count=32
     trace=[]
     while not engine.state.done and engine.state.move_count < cap:
@@ -64,6 +65,8 @@ def play(task):
             assert engine.state.to_move!=actor and engine.state.move_count==before_ply+1 and not engine.state.prepared
         actions[f"{event['actor']}:{event['atype']}"]+=1
         royal_guards+=event.get('formation',{}).get('mode')=='king_guard'
+        power_shots+=bool(event.get('ranged',{}).get('power_shot'))
+        if action[-1] in (0,1): reach[max(abs(action[0]-action[3]),abs(action[1]-action[4]))]+=1
         if not is_preparation(action[-1]):
             enemy='south' if actor=='north' else 'north'
             assert engine.state.king_moves[enemy]==before_king_moves[enemy]
@@ -74,7 +77,7 @@ def play(task):
             king_row=next(r for r,row in enumerate(engine.state.board.grid) for sq in row
                           for u in (sq.top,sq.bottom) if u and u.code=="K" and u.side==actor)
             warp_rows.append(abs(event["warp"]["to"][0]-king_row)-abs(event["warp"]["from"][0]-king_row))
-        engine.state.board.validate()
+        engine.state.board.validate(engine.rules.game.formations)
         remaining=sum(u is not None for row in engine.state.board.grid for sq in row for u in (sq.top,sq.bottom))
         assert remaining == prior_count-len(event["losses"]), (task,action,event)
         prior_count=remaining
@@ -86,6 +89,7 @@ def play(task):
             "reason":state.reason,"plies":state.move_count,"terminated":state.terminated,
             "truncated":state.truncated,"minimal_loss_turns":minimal}
     detail={"actions":dict(actions),"deaths":dict(losses),"warps":dict(warps),"warp_rows":warp_rows,"stacking":stacking,
+            "power_shots":power_shots,"reach":dict(reach),
             "royal_guards":royal_guards}
     return result,detail,trace
 
@@ -148,13 +152,14 @@ def main():
             seed=20260913+group*1000000+pair
             for swap in (False,True): tasks.append((f"{a} vs {b}",pair,a,b,swap,seed,args.max_plies))
     records=[];traces=[];actions=Counter();deaths=Counter();warps=Counter();warp_rows=[];stacking=0;royal_guards=0
+    power_shots=0;reach=Counter()
     start=time.monotonic()
     with ProcessPoolExecutor(max_workers=args.workers,initializer=initialize,initargs=(args.ruleset,None if args.warp_range is None else args.warp_range,None if args.warp_breaks is None else args.warp_breaks=="on")) as pool:
         for result,detail,trace in pool.map(play,tasks,chunksize=10):
             records.append(result)
             actions.update(detail["actions"]);deaths.update(detail["deaths"]);warps.update(detail["warps"]);warp_rows+=detail["warp_rows"]
             stacking+=detail["stacking"]
-            royal_guards+=detail["royal_guards"]
+            royal_guards+=detail["royal_guards"];power_shots+=detail["power_shots"];reach.update(detail["reach"])
             if trace: traces.append({**result,"actions":trace})
             if len(records)%250==0:
                 print(f"{len(records)}/{len(tasks)} games; {time.monotonic()-start:.1f}s",flush=True)
@@ -162,7 +167,7 @@ def main():
         w=csv.DictWriter(f,fieldnames=list(records[0]) if records else [])
         w.writeheader();w.writerows(records)
     warp=next(a for a in load_ruleset(args.ruleset).game.pieces["Q"].abilities if a.name=="warp")
-    summary={"rules_version":6,"warp_range":args.warp_range or warp.range,
+    summary={"rules_version":6,"mode":load_ruleset(args.ruleset).game.mode,"warp_range":args.warp_range or warp.range,
              "warp_breaks_formations":warp.breaks_formations if args.warp_breaks is None else args.warp_breaks=="on","base_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
              "source_sha256":source_hash(args.ruleset),"rules_sha256":hashlib.sha256(Path(args.ruleset).read_bytes()).hexdigest(),
              "games":len(records),"plies":sum(r["plies"] for r in records),"max_plies":args.max_plies,
@@ -171,6 +176,7 @@ def main():
              "elapsed_seconds":time.monotonic()-start,"cohorts":summaries(records),
              "actions_by_piece_and_kind":dict(actions),"deaths_by_piece":dict(deaths),
 "warps_by_piece":dict(warps),"warps":sum(warps.values()),
+             "power_shots":power_shots,"orders_by_distance":{str(k):v for k,v in sorted(reach.items())},
              "warp_rows_added_mean":(sum(warp_rows)/len(warp_rows) if warp_rows else None),
              "stacking_moves":stacking,"royal_guard_combats":royal_guards,
              "versions":{name:importlib.metadata.version(name) for name in ("numpy","pydantic","pyyaml","pettingzoo","gymnasium")},

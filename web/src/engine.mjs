@@ -1,4 +1,4 @@
-import { RULES } from "./rules.mjs";
+import { RULES, useRuleset } from "./rules.mjs";
 import { attackSector, resolveCombat, meleeAllowed, contactSlots, canonicalLayout,
   defaultLayout, physicalPosition, layoutLabel, isPreparation, isShot, shotSlot } from "./formations.mjs";
 export { attackSector, resolveCombat, layoutLabel, isPreparation, isShot, shotSlot } from "./formations.mjs";
@@ -22,7 +22,7 @@ const lex = (a, b) => {
   return 0;
 };
 
-export function initialState() {
+export function initialState(mode = "warfare") {
   const board = Array.from({ length: 64 }, () => []);
   for (const sign of [1, -1]) {
     const back = sign === 1 ? 7 : 0,
@@ -32,7 +32,7 @@ export function initialState() {
       board[pawns * 8 + col] = [sign];
     });
   }
-  return studyState(board);
+  return studyState(board, 1, [0, 0], null, [], [0, 0], mode);
 }
 
 export function cloneState(state) {
@@ -47,8 +47,11 @@ export function cloneState(state) {
   };
 }
 
-export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], kingMoves = [0, 0]) {
+export function studyState(board, turn = 1, retreats = [0, 0], layout = null, prepared = [], kingMoves = [0, 0], mode = "warfare") {
+  if (!MODES.includes(mode)) throw Error(`Unknown ruleset: ${mode}`);
+  activate({ mode });
   const state = {
+    mode,
     board: board.map((s) => [...s]),
     layout: board.map((sq, i) => layout?.[i] ?? defaultLayout(sq)),
     kingMoves: [...kingMoves],
@@ -76,6 +79,10 @@ export function validateState(s) {
     s.board.length !== 64
   )
     throw Error("Invalid board");
+  if (!MODES.includes(s.mode ?? "warfare")) throw Error("Unknown ruleset");
+  activate(s);
+  if (!RULES.formations && s.board.some((sq) => Array.isArray(sq) && sq.length > 1))
+    throw Error("This ruleset has no formations: one unit per square");
   if (
     !Array.isArray(s.retreats) ||
     s.retreats.length !== 2 ||
@@ -147,7 +154,49 @@ export function advanceSteps(steps, r, c, owner, king) {
   return c !== kc ? [[0, Math.sign(kc - c)]] : [];
 }
 
+/** Squares reached in one to `maxSteps` steps from `origin` (an index). stepsFrom(r, c) gives the
+ * step directions allowed from a square; every square before the last must be empty or hold one
+ * friendly unit. The origin itself is never returned. */
+export function reachable(state, origin, owner, maxSteps, stepsFrom) {
+  const found = new Set(), expanded = new Set([origin]);
+  let frontier = [origin];
+  for (let depth = 1; depth <= maxSteps; depth++) {
+    const following = [];
+    for (const at of frontier)
+      for (const [dr, dc] of stepsFrom(at >> 3, at % 8)) {
+        const rr = (at >> 3) + dr, cc = (at % 8) + dc;
+        if (!inside(rr, cc)) continue;
+        const to = rr * 8 + cc;
+        found.add(to);
+        // A square first reached at the smallest depth keeps the largest remaining budget.
+        if (depth < maxSteps && !expanded.has(to) && cavalryPassable(state.board[to], owner)) {
+          expanded.add(to);
+          following.push(to);
+        }
+      }
+    frontier = following;
+  }
+  found.delete(origin);
+  return [...found];
+}
+
+// Warfare: two Archers share the square. Open Field: a friendly Archer stands next to the shooter.
+export function powerShotReady(state, index, owner, ability) {
+  const sq = state.board[index];
+  if (ability.support === "formation") return sq.length === 2 && sq.every((u) => code(u) === "B");
+  const r = index >> 3, c = index % 8;
+  return directions.some(([dr, dc]) => inside(r + dr, c + dc) && state.board[(r + dr) * 8 + c + dc].includes(owner * 3));
+}
+
+// States carry their ruleset; switch the active rules when a state from the other mode arrives.
+export const MODES = ["warfare", "open_field"];
+function activate(state) {
+  const mode = state.mode ?? "warfare";
+  if (RULES.mode !== mode) useRuleset(mode);
+}
+
 export function unfilteredActions(state) {
+  activate(state);
   if (state.winner !== null) return [];
   const actions = new Map(),
     owner = state.turn,
@@ -164,38 +213,21 @@ export function unfilteredActions(state) {
         const a = [r, c, slot, rr, cc, kind];
         actions.set(actionKey(a), a);
       };
-      const quiet = (rr, cc) => {
-        if (!inside(rr, cc)) return;
-        const dst = state.board[rr * 8 + cc];
-        if (!dst.length || (side(dst[0]) === owner && dst.length === 1)) add(rr, cc, 0);
-      };
-      const attack = (rr, cc) => {
-        if (!inside(rr, cc)) return;
-        const dst = state.board[rr * 8 + cc];
-        if (dst.length && side(dst[0]) !== owner && meleeAllowed(unit, dst, index, rr * 8 + cc, state.layout[rr * 8 + cc]))
-          add(rr, cc, 1);
-      };
       // M2-M4: the King always advances toward the enemy back rank; every other class
-      // advances toward the enemy King's row. Cavalry's second step is chosen afresh.
+      // advances toward the enemy King's row, each step chosen afresh from its square.
       const stepsFrom = (rr, cc) => code(unit) === "K" ? dirs : advanceSteps(movement.steps, rr, cc, owner, king);
-      for (const [dr, dc] of stepsFrom(r, c)) {
-        const rr = r + dr, cc = c + dc;
-        if (!inside(rr, cc)) continue;
-        quiet(rr, cc);
-        if (movement.max_steps === 2 && cavalryPassable(state.board[rr * 8 + cc], owner))
-          for (const [dr2, dc2] of stepsFrom(rr, cc)) quiet(rr + dr2, cc + dc2);
+      // M5/M7: a Priestess in contact or a King in peril may take every step in any direction.
+      const free = movement.retreat_trigger !== "none" &&
+        enemyNear(state, r, c, owner, movement.retreat_trigger === "adjacent_enemy" ? 1 : movement.threat_radius);
+      for (const to of reachable(state, index, owner, movement.max_steps, free ? () => directions : stepsFrom)) {
+        const dst = state.board[to];
+        // Warfare may end on one ally (a formation); without formations only on an empty square.
+        if (!dst.length || (RULES.formations && side(dst[0]) === owner && dst.length === 1)) add(to >> 3, to % 8, 0);
       }
-      // M5/M7: Priestess contact step and King peril step.
-      if (movement.retreat_trigger !== "none" &&
-        enemyNear(state, r, c, owner, movement.retreat_trigger === "adjacent_enemy" ? 1 : movement.threat_radius))
-        for (const [dr, dc] of directions) quiet(r + dr, c + dc);
-      // M8: attacks are free in every direction; Cavalry may pass one ally.
-      for (const [dr, dc] of directions) {
-        const rr = r + dr, cc = c + dc;
-        if (!inside(rr, cc)) continue;
-        attack(rr, cc);
-        if (movement.max_steps === 2 && cavalryPassable(state.board[rr * 8 + cc], owner))
-          for (const [dr2, dc2] of directions) attack(rr + dr2, cc + dc2);
+      // M8: attacks reach as far as movement, in any direction, along the same kind of path.
+      for (const to of reachable(state, index, owner, movement.max_steps, () => directions)) {
+        const dst = state.board[to];
+        if (dst.length && side(dst[0]) !== owner && meleeAllowed(unit, dst, index, to, state.layout[to])) add(to >> 3, to % 8, 1);
       }
       for (const ability of spec.abilities) {
         if (ability.name === "warp") {
@@ -217,11 +249,7 @@ export function unfilteredActions(state) {
               });
             }
         } else {
-          if (
-            ability.requires_stack_size === 2 &&
-            !(sq.length === 2 && sq.every((u) => code(u) === "B"))
-          )
-            continue;
+          if (ability.name === "power_shot" && !powerShotReady(state, index, owner, ability)) continue;
           for (const [dr, dc] of directions)
             for (let dist = 1; dist <= ability.range; dist++) {
               const rr = r + dr * dist,
@@ -288,6 +316,7 @@ export function warpers(state, index, owner) {
 }
 
 export function preparationActions(state) {
+  activate(state);
   if (state.winner !== null || state.prepared.length >= RULES.formation_rearrangements) return [];
   return state.board.flatMap((sq, i) => sq.length === 2 && side(sq[0]) === state.turn && !state.prepared.includes(i)
     ? [0, 1, 2, 3].filter(l => l !== state.layout[i] && canonicalLayout(sq, l) === l)
@@ -295,11 +324,13 @@ export function preparationActions(state) {
 }
 
 export function legalActions(state) {
+  activate(state);
   const orders = legalOrders(state);
   return orders.length ? [...orders, ...preparationActions(state)].sort(lex) : [];
 }
 
 export function legalOrders(state) {
+  activate(state);
   const actions = unfilteredActions(state);
   if (!RULES.minimal_loss.enabled || !actions.length) return actions;
   const scored = [];
@@ -393,6 +424,7 @@ function adjudicate(state) {
 
 // The input is immutable. Only the internal AI passes a previously generated action.
 export function transition(state, action, trusted = false) {
+  activate(state);
   if (
     !trusted &&
     (!Array.isArray(action) ||

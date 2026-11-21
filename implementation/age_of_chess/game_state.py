@@ -60,9 +60,11 @@ class Board:
         return Board(self.rows, self.cols, [[Square(clone(s.top), clone(s.bottom), s.layout) for s in row]
                                            for row in self.grid])
 
-    def validate(self):
+    def validate(self, formations=True):
         if len(self.grid) != self.rows or any(len(row) != self.cols for row in self.grid):
             raise ValueError("Board dimensions do not match grid")
+        if not formations and any(s.bottom for row in self.grid for s in row):
+            raise ValueError("This ruleset has no formations: one unit per square")
         kings = Counter()
         queens = Counter()
         for row in self.grid:

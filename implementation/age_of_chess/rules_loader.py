@@ -11,7 +11,7 @@ class StrictModel(BaseModel):
 
 class MoveSpec(StrictModel):
     steps: list[tuple[int, int]]
-    max_steps: int = Field(default=1, ge=1, le=2)
+    max_steps: int = Field(default=1, ge=1, le=3)
     retreat_trigger: Literal["none", "adjacent_enemy", "nearby_enemy"] = "none"
     threat_radius: int = Field(default=1, ge=1, le=8)
 
@@ -27,6 +27,8 @@ class AbilitySpec(StrictModel):
     targets: list[str]
     requires_stack_size: int = Field(default=1, ge=1, le=2)
     breaks_formations: bool = False
+    # Power shot support: two Archers in one formation, or a friendly Archer on a neighbouring square.
+    support: Literal["formation", "adjacent"] = "formation"
 
     @model_validator(mode="after")
     def targets_valid(self):
@@ -38,8 +40,10 @@ class AbilitySpec(StrictModel):
             raise ValueError("arrows reach one square; only warp has a range setting or breaks formations")
         if self.name == "warp" and self.requires_stack_size != 1:
             raise ValueError("warp is performed by a single Priestess")
-        if self.name == "power_shot" and self.requires_stack_size != 2:
-            raise ValueError("power shot requires two Archers")
+        if self.name != "power_shot" and self.support != "formation":
+            raise ValueError("only the power shot has a support setting")
+        if self.name == "power_shot" and self.requires_stack_size != (2 if self.support == "formation" else 1):
+            raise ValueError("a formation power shot needs two Archers in the square; an adjacent one needs a single shooter")
         return self
 
 class PieceSpec(StrictModel):
@@ -76,6 +80,8 @@ class CombatSpec(StrictModel):
 class GameSpec(StrictModel):
     name: str
     version: Literal[6]
+    mode: Literal["warfare", "open_field"]
+    formations: bool
     advance_reference: Literal["enemy_king_row"]
     attack_all_directions: Literal[True]
     lone_commander_loses: Literal[True]
@@ -85,7 +91,7 @@ class GameSpec(StrictModel):
     archer_return_fire: Literal[True]
     same_type_stance: Literal["guarded_center"]
     cavalry_pass_single_ally: Literal[True]
-    formation_rearrangements: Literal[3]
+    formation_rearrangements: Literal[0, 3]
     formation_combat: Literal["ready_reserve"]
     board: BoardSpec
     minimal_loss: MinimalLossSpec
@@ -118,6 +124,26 @@ class GameSpec(StrictModel):
             for defender in "PNBR":
                 if actor != defender and self.combat.single[actor][defender] != ("win" if (actor, defender) in wins else "lose"):
                     raise ValueError("Rules v6 requires unconditional ordinary-class counters")
+        # Each mode fixes its movement reach, formation use and power-shot support.
+        reach = {code: piece.move.max_steps for code, piece in self.pieces.items()}
+        power = next((a for a in self.pieces["B"].abilities if a.name == "power_shot"), None)
+        warp = next((a for a in self.pieces["Q"].abilities if a.name == "warp"), None)
+        if self.mode == "warfare":
+            if not self.formations or self.formation_rearrangements != 3:
+                raise ValueError("Warfare uses formations and three rearrangements")
+            if reach != {"P": 1, "N": 2, "B": 1, "R": 1, "Q": 1, "K": 1}:
+                raise ValueError("Warfare: Cavalry takes up to two steps, every other unit one")
+            if power and power.support != "formation":
+                raise ValueError("Warfare power shots come from a two-Archer formation")
+        else:
+            if self.formations or self.formation_rearrangements != 0:
+                raise ValueError("Open Field has no formations and no rearrangements")
+            if reach != {"P": 2, "N": 3, "B": 2, "R": 2, "Q": 2, "K": 1}:
+                raise ValueError("Open Field: Cavalry takes up to three steps, the King one, every other unit two")
+            if power and power.support != "adjacent":
+                raise ValueError("Open Field power shots need a friendly Archer on a neighbouring square")
+            if warp and warp.breaks_formations:
+                raise ValueError("Open Field has no formations to break")
         for code, piece in self.pieces.items():
             names = [a.name for a in piece.abilities]
             if len(set(names)) != len(names):

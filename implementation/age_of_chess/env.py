@@ -1,4 +1,4 @@
-"""Rules-v6 engine with atomic validation, ordered friendly stacks and adjudication."""
+"""Rules-v6 engine (Warfare or Open Field) with atomic validation, ordered friendly stacks and adjudication."""
 from __future__ import annotations
 import copy
 import numpy as np
@@ -25,7 +25,7 @@ class Engine:
         """Load a study position, reset repetition history and settle automatic effects."""
         if (state.board.rows, state.board.cols) != (8, 8) or state.to_move not in ("north", "south"):
             raise ValueError("Invalid study position")
-        state.board.validate()
+        state.board.validate(self.rules.game.formations)
         if (set(state.retreat_counts) != {"north", "south"} or
                 any(type(n) is not int or not 0 <= n <= 3 for n in state.retreat_counts.values()) or
                 all(n == 3 for n in state.retreat_counts.values())):
@@ -129,7 +129,8 @@ class Engine:
                     obs[29+sq.layout, r, c] = 1
         for i in self.state.prepared:
             obs[33, i//8, i%8] = 1
-        obs[34] = (self.rules.game.formation_rearrangements-len(self.state.prepared)) / self.rules.game.formation_rearrangements
+        budget = self.rules.game.formation_rearrangements
+        obs[34] = (budget-len(self.state.prepared)) / budget if budget else 0.0   # Open Field has no budget.
         # Absolute coordinates match action IDs. Side/direction and turn are explicit.
         obs[24] = float(agent == "north")
         obs[25] = float(agent == self.state.to_move)

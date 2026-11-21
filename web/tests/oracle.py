@@ -11,7 +11,8 @@ from implementation.age_of_chess.game_state import Board, Unit, GameState
 rng = random.Random(20260914)
 def snapshot(engine):
     s = engine.state
-    return {'board': [[(1 if u.side == 'north' else -1) * ('PNBRQK'.index(u.code)+1)
+    return {'mode': engine.rules.game.mode,
+            'board': [[(1 if u.side == 'north' else -1) * ('PNBRQK'.index(u.code)+1)
                       for u in (sq.top, sq.bottom) if u]
                      for row in s.board.grid for sq in row],
             'layout': [sq.layout for row in s.board.grid for sq in row], 'prepared': s.prepared[:],
@@ -150,3 +151,75 @@ for owner in ('north','south'):
                         except ValueError: continue
                         warps=[a for a in e.legal_actions() if a[5]==3]
                         emit(e,chosen=rng.choice(warps) if warps else None)
+
+# ---------------------------------------------------------------- Open Field
+OPEN = 'rulesets/open_field.yaml'
+
+# Seeded Open Field games from the standard opening.
+for _ in range(60):
+    e = Engine(OPEN)
+    for ply in range(120):
+        if e.state.done: break
+        emit(e)
+
+def open_position(pieces, to_move):
+    """Settle an Open Field study position; None when it is not a legal setup."""
+    b = Board(8, 8)
+    for (r, c), code, owner in pieces:
+        b.grid[r][c].add_unit(Unit(code, owner))
+    e = Engine(OPEN)
+    try: e.set_state(GameState(b, to_move=to_move))
+    except ValueError: return None
+    return e
+
+# Sparse and crowded random study positions: one unit per square, every class.
+for _ in range(900):
+    squares = rng.sample(range(64), rng.randint(4, 28))
+    pieces = [((squares[0]//8, squares[0]%8), 'K', 'north'), ((squares[1]//8, squares[1]%8), 'K', 'south')]
+    queens = set()
+    for k in squares[2:]:
+        owner = rng.choice(['north', 'south'])
+        code = rng.choice('PPNBBRQ')
+        if code == 'Q' and owner in queens: code = 'B'
+        if code == 'Q': queens.add(owner)
+        pieces.append(((k//8, k%8), code, owner))
+    e = open_position(pieces, rng.choice(['north', 'south']))
+    if e: emit(e)
+
+# Reach around blockers: each class at several squares, with friendly and enemy walls.
+for owner in ('north', 'south'):
+    enemy = 'south' if owner == 'north' else 'north'
+    for code in 'PNBRQK':
+        for origin in ((4, 3), (6, 1), (1, 6), (3, 0), (5, 5)):
+            for _ in range(6):
+                pieces = [(origin, code, owner)]
+                taken = {origin}
+                for k in rng.sample(range(64), 12):
+                    sq = (k//8, k%8)
+                    if sq in taken: continue
+                    taken.add(sq)
+                    pieces.append((sq, rng.choice('PNBR'), rng.choice([owner, enemy])))
+                free = [(r, c) for r in range(8) for c in range(8) if (r, c) not in taken]
+                rng.shuffle(free)
+                if code != 'K': pieces.append((free.pop(), 'K', owner))
+                pieces.append((free.pop(), 'K', enemy))
+                e = open_position(pieces, owner)
+                if e:
+                    mine = [a for a in e.legal_actions() if (a[0], a[1]) == origin]
+                    emit(e, chosen=rng.choice(mine) if mine else None)
+
+# Power shots: a target in every direction, a supporting Archer on every neighbour or none.
+dirs = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if dr or dc]
+for owner in ('north', 'south'):
+    enemy = 'south' if owner == 'north' else 'north'
+    for target_dir in dirs:
+        for target in 'NRBPQ':
+            for friend_dir in [None, *dirs]:
+                if friend_dir == target_dir: continue
+                pieces = [((4, 3), 'B', owner), ((4+target_dir[0], 3+target_dir[1]), target, enemy),
+                          ((7, 7), 'K', 'north'), ((0, 7), 'K', 'south'), ((7, 0), 'P', 'north'), ((0, 0), 'P', 'south')]
+                if friend_dir: pieces.append(((4+friend_dir[0], 3+friend_dir[1]), 'B', owner))
+                e = open_position(pieces, owner)
+                if e:
+                    shots = [a for a in e.legal_actions() if a[5] == 2]
+                    emit(e, chosen=rng.choice(shots) if shots else None)

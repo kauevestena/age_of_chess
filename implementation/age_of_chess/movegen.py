@@ -59,11 +59,50 @@ def cavalry_passable(square, side):
 def empty_squares(state):
     return [(r, c) for r, row in enumerate(state.board.grid) for c, sq in enumerate(row) if sq.is_empty()]
 
+def reachable(state, origin, side, max_steps, steps_from):
+    """Squares reached in one to max_steps steps from origin.
+
+    steps_from(row, col) gives the step directions allowed from a square. Every square
+    before the last one must be passable: empty or holding one friendly unit. The
+    origin itself is never returned.
+    """
+    rows, cols = state.board.rows, state.board.cols
+    found, frontier, expanded = set(), [origin], {origin}
+    for depth in range(1, max_steps+1):
+        following = []
+        for r, c in frontier:
+            for dr, dc in steps_from(r, c):
+                rr, cc = r+dr, c+dc
+                if not in_bounds(rr, cc, rows, cols):
+                    continue
+                found.add((rr, cc))
+                # A square reached first at the smallest depth keeps the largest budget.
+                if depth < max_steps and (rr, cc) not in expanded and cavalry_passable(state.board.grid[rr][cc], side):
+                    expanded.add((rr, cc))
+                    following.append((rr, cc))
+        frontier = following
+    found.discard(origin)
+    return found
+
+def power_shot_ready(state, r, c, side, ability):
+    """Warfare: two Archers share the square. Open Field: a friendly Archer stands next to the shooter."""
+    sq = state.board.grid[r][c]
+    if ability.support == "formation":
+        return bool(sq.top and sq.bottom and sq.top.code == sq.bottom.code == "B")
+    for dr, dc in ALL_DIRS:
+        rr, cc = r+dr, c+dc
+        if in_bounds(rr, cc, state.board.rows, state.board.cols):
+            neighbour = state.board.grid[rr][cc]
+            if any(u and u.side == side and u.code == "B" for u in (neighbour.top, neighbour.bottom)):
+                return True
+    return False
+
 def gen_single_moves(state, rules):
     if state.done:
         return []
     rows, cols, side = state.board.rows, state.board.cols, state.to_move
     king = enemy_king_square(state, side)
+    formations = rules.game.formations
     actions = set()
     empties = None
     for r, row in enumerate(state.board.grid):
@@ -74,19 +113,6 @@ def gen_single_moves(state, rules):
                 spec = rules.game.pieces[unit.code]
                 movement = spec.move
 
-                def quiet(rr, cc):
-                    if not in_bounds(rr, cc, rows, cols): return
-                    target = state.board.grid[rr][cc]
-                    if target.is_empty() or (target.top.side == side and target.bottom is None):
-                        actions.add((r, c, slot, rr, cc, 0))
-
-                def attack(rr, cc):
-                    if not in_bounds(rr, cc, rows, cols): return
-                    target = state.board.grid[rr][cc]
-                    if target.top and target.top.side != side and melee_allowed(
-                            unit, target, rules, (r, c), (rr, cc)):
-                        actions.add((r, c, slot, rr, cc, 1))
-
                 def steps_from(rr, cc):
                     # The King always moves toward the enemy back rank (M7); every
                     # other class advances toward the enemy King's row (M2).
@@ -94,31 +120,28 @@ def gen_single_moves(state, rules):
                         return [(-dr if side == "south" else dr, dc) for dr, dc in movement.steps]
                     return advance_steps(movement.steps, rr, cc, side, king)
 
-                # M2-M4: one advance step; Cavalry may take a second step chosen
-                # afresh from a passable intermediate square.
-                for dr, dc in steps_from(r, c):
-                    rr, cc = r+dr, c+dc
-                    if not in_bounds(rr, cc, rows, cols): continue
-                    quiet(rr, cc)
-                    if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
-                        for dr2, dc2 in steps_from(rr, cc):
-                            quiet(rr+dr2, cc+dc2)
+                # M5/M7: a Priestess in contact or a King in peril may take every
+                # step of this order in any direction.
+                free = movement.retreat_trigger != "none" and enemy_near(
+                    state, r, c, side,
+                    1 if movement.retreat_trigger == "adjacent_enemy" else movement.threat_radius)
+                quiet_steps = (lambda rr, cc: ALL_DIRS) if free else steps_from
 
-                # M5/M7: contact step (Priestess) and peril step (King).
-                if movement.retreat_trigger != "none" and enemy_near(
-                        state, r, c, side,
-                        1 if movement.retreat_trigger == "adjacent_enemy" else movement.threat_radius):
-                    for dr, dc in ALL_DIRS:
-                        quiet(r+dr, c+dc)
+                # M2-M4: up to max_steps advance steps, each chosen afresh from its square,
+                # passing empty squares or single allies. Warfare may end on one ally (a
+                # formation); without formations a quiet move ends on an empty square.
+                for rr, cc in reachable(state, (r, c), side, movement.max_steps, quiet_steps):
+                    target = state.board.grid[rr][cc]
+                    if target.is_empty() or (formations and target.top.side == side and target.bottom is None):
+                        actions.add((r, c, slot, rr, cc, 0))
 
-                # M8: attacks are free in every direction; Cavalry may pass one ally.
-                for dr, dc in ALL_DIRS:
-                    rr, cc = r+dr, c+dc
-                    if not in_bounds(rr, cc, rows, cols): continue
-                    attack(rr, cc)
-                    if movement.max_steps == 2 and cavalry_passable(state.board.grid[rr][cc], side):
-                        for dr2, dc2 in ALL_DIRS:
-                            attack(rr+dr2, cc+dc2)
+                # M8: attacks reach as far as movement, in any direction, along the same
+                # kind of path.
+                for rr, cc in reachable(state, (r, c), side, movement.max_steps, lambda rr, cc: ALL_DIRS):
+                    target = state.board.grid[rr][cc]
+                    if target.top and target.top.side != side and melee_allowed(
+                            unit, target, rules, (r, c), (rr, cc)):
+                        actions.add((r, c, slot, rr, cc, 1))
 
                 for ability in spec.abilities:
                     if ability.name == "warp":
@@ -144,8 +167,7 @@ def gen_single_moves(state, rules):
                                     for er, ec in empties:
                                         actions.add((rr, cc, target_slot, er, ec, 3))
                     else:
-                        if ability.requires_stack_size == 2 and not (
-                            sq.top and sq.bottom and sq.top.code == sq.bottom.code == "B"):
+                        if ability.name == "power_shot" and not power_shot_ready(state, r, c, side, ability):
                             continue
                         for dr, dc in ALL_DIRS:
                             for distance in range(1, ability.range+1):

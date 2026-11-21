@@ -38,7 +38,7 @@ const DIRECTION = (owner) => (owner === 1 ? "North" : "South");
 const names = { squire: "Squire", knight: "Knight", marshal: "Marshal" };
 const descriptions = {
   P: "A disciplined line of spears. Defeats Cavalry and Archers in melee; falls to Heavy Infantry.",
-  N: "A swift shock unit. Takes one or two steps toward the enemy King's row, passing through an empty square or one ally. Defeats Heavy Infantry and Archers in melee; always loses to Pikemen, even from behind.",
+  N: "A swift shock unit. Moves and strikes over several steps toward the enemy King's row, passing empty squares or allies. Defeats Heavy Infantry and Archers in melee; always loses to Pikemen, even from behind.",
   B: "Fires along any clear straight or diagonal ray, one square. Archers return fire against Archers: both die. Pikemen defeat Archers in melee.",
   R: "The armored heart of an army. Defeats Pikemen and Archers. Always loses to Cavalry in melee, including inside a formation.",
   Q: "Warps an enemy Pikeman, Cavalry, Archer, or Heavy Infantry within two squares to any empty square, even one standing in a formation, which breaks it. Cannot warp a King, a Priestess, or any formation that holds a King.",
@@ -222,14 +222,15 @@ function startGame() {
   tutorial = -1;
   lessonDone = false;
   resignation = null;
-  state = initialState();
-  moves = [];
-  events = [];
   config = {
     mode: $("input[name=mode]:checked").value,
     difficulty: $("input[name=difficulty]:checked").value,
     humanSide: Number($("input[name=side]:checked").value),
+    ruleset: $("input[name=ruleset]:checked").value,
   };
+  state = initialState(config.ruleset);
+  moves = [];
+  events = [];
   if (config.mode !== "solo") config.humanSide = 1;
   if (isSpectating()) {
     config.northDifficulty = $("#north-difficulty").value;
@@ -334,7 +335,7 @@ $("#difficulty-field").onchange = () =>
   }[$("input[name=difficulty]:checked").value]);
 
 function displayedState() {
-  return replayPly === null ? state : stateAt(moves, replayPly);
+  return replayPly === null ? state : stateAt(moves, replayPly, config.ruleset ?? "warfare");
 }
 function roster(owner, s) {
   return [..."PNBRQK"]
@@ -353,11 +354,12 @@ function render() {
   $("#battle-mode").textContent =
     tutorial >= 0
       ? "The training ground"
-      : isSpectating()
+      : (isSpectating()
         ? "Spectator battle · AI vs AI"
         : config.mode === "solo"
           ? `Solo skirmish · ${names[config.difficulty]}`
-          : "Local rivalry · two players";
+          : "Local rivalry · two players") + (config.ruleset === "open_field" ? " · Open Field" : "");
+  $(".board-legend span").innerHTML = `<i class="move-dot"></i>${RULES.formations ? "Advance / stack" : "Advance"}`;
   $("#turn-crest").innerHTML = crest(display.turn);
   $("#turn-name").textContent = `The ${HOST(display.turn)}`;
   $("#turn-number").textContent = String(display.ply + 1).padStart(2, "0");
@@ -416,7 +418,7 @@ function render() {
     : "Capture the enemy King or eliminate every unit supporting it.";
   $("#commander-retreats").textContent =
     `King orders · Azure ${display.kingMoves[0]}/4 (backward ${display.retreats[0]}/3) · Ember ${display.kingMoves[1]}/4 (backward ${display.retreats[1]}/3). ${display.retreats.includes(2) || display.kingMoves.includes(3) ? "A King is one qualifying move from forfeit." : "The fourth consecutive King move or third backward move forfeits."}`;
-  $("#formation-budget").textContent = state.winner !== null ? ""
+  $("#formation-budget").textContent = state.winner !== null || !RULES.formation_rearrangements ? ""
     : `Formation changes: ${display.prepared.length}/${RULES.formation_rearrangements} · ${display.prepared.length === 3 ? "Issue one normal order now." : "Rearrange up to three formations, then issue one normal order."}`;
   $(".keyboard-tip").textContent = isSpectating()
     ? "Pause to inspect units or review the chronicle · Arrow keys to navigate · F to flip"
@@ -554,6 +556,8 @@ function renderSelection(display) {
   $("#selected-description").textContent = descriptions[code(unit)];
   $("#unit-facts").innerHTML =
     `<span>${HOST(side(unit))} · faces rank ${side(unit) > 0 ? 8 : 1} · ${squareName(selected.index)}${sq.length > 1 ? ` · ${selected.slot ? "B" : "A"} unit at ${POSITIONS[display.layout[selected.index]][selected.slot]}` : ""}</span><br><span>${isSpectating() ? "Spectator view · the AI controls this unit." : side(unit) === display.turn ? "Highlighted squares show available orders." : "Inspecting an opposing unit."}</span>`;
+  if (!RULES.formations)
+    $("#unit-facts").innerHTML += `<br><strong>Open Field · moves and attacks up to ${RULES.pieces[code(unit)].move.max_steps} ${RULES.pieces[code(unit)].move.max_steps === 1 ? "square" : "squares"}${code(unit) === "K" ? "; never attacks" : ", passing friendly units"}.</strong>`;
   if (code(unit) === "Q" && side(unit) === display.turn && canAct())
     $("#unit-facts").innerHTML += warping !== null
       ? `<br><strong>Warp · choose an empty square for the ${label(state.board[warping.index][warping.slot])} on ${squareName(warping.index)}. Escape cancels.</strong>`
@@ -974,7 +978,7 @@ function undo() {
   resignation = null;
   moves = moves.slice(0, length);
   events = events.slice(0, length);
-  state = stateAt(moves, moves.length);
+  state = stateAt(moves, moves.length, config.ruleset ?? "warfare");
   selected = null;
   saveGame();
   render();
@@ -1156,9 +1160,12 @@ function guide(tab = "essentials") {
     ["essentials", "Essentials"],
     ["units", "The six orders"],
     ["counters", "Combat table"],
+    ["open_field", "Open Field"],
   ];
   let content = "";
-  if (tab === "units")
+  if (tab === "open_field")
+    content = `<div class="guide-prose"><h3>Open Field: no formations</h3><p>Choose Open Field under Rules in the war camp. Everything in the other tabs applies, with these changes. The tutorial teaches Warfare.</p><h3>Reach</h3><p>Every unit except the King moves up to two squares; Cavalry up to three. Each step follows the usual direction rule from the square it starts on: onto the next row toward the enemy King's row, or along that row toward him. Squares passed on the way must be empty or hold a friendly unit; an enemy blocks the path. A move ends on an empty square: units never share a square, so there are no formations, arrangements, or royal escorts.</p><h3>Attacks</h3><p>Units attack at the same reach, approaching from any direction along such a path, and a surviving attacker occupies the square. Guarded stance uses the square the attack started from, so a matching unit straight ahead still holds its front even two squares away. Class counters come first. The King keeps one step, moves forward unless an enemy is within two squares, and never attacks.</p><h3>Priestess and Archers</h3><p>A Priestess with an enemy beside her may take both steps in any direction. Warp works as usual within two squares, on solitary enemies. An Archer still shoots one square; with a friendly Archer on any neighbouring square it may also shoot Cavalry or Heavy Infantry.</p></div>`;
+  else if (tab === "units")
     content = [..."PNBRQK"]
       .map(
         (c, i) =>

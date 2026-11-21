@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { spectatorChecks } from "./spectator.mjs";
 import { formationChecks } from "./formations-browser.mjs";
 import { warpChecks } from "./warp-browser.mjs";
+import { openFieldChecks } from "./open-field-browser.mjs";
 import { createRecord, SAVE_KEY } from "../src/records.mjs";
 const require = createRequire(import.meta.url),
   { chromium } = require("playwright");
@@ -614,6 +615,7 @@ try {
   await limited.close();
   await formationChecks(browser, url, monitor, check, out);
   await warpChecks(browser, url, monitor, check, out);
+  await openFieldChecks(browser, url, monitor, check, out);
   await spectatorChecks(browser, url, monitor, check, out);
   check(errors.length === 0, `browser errors: ${errors.join("; ")}`);
   check(badRequests.length === 0, `failed assets: ${badRequests.join("; ")}`);

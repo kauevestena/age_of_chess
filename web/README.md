@@ -138,6 +138,18 @@ The score notes and instrumentation are in `src/audio.mjs`; unit art is in
 `src/art.mjs`. These are intentionally editable, text-based source assets.
 Audio activation follows [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices).
 
+## Open Field ruleset
+
+The war camp's Rules picker offers Warfare (the default) or Open Field: no formations,
+units move and attack over two squares (Cavalry three, the King one) passing friendly
+units, and an Archer beside a friendly Archer gets the power shot. Every mode — solo,
+local and spectator — works with either ruleset. Game states carry their ruleset and the
+engine switches rules to match, so the AI worker, saves, undo and review follow each
+game. Saves record `config.ruleset`; older saves load as Warfare. The field guide has an
+Open Field tab; the tutorial teaches Warfare. See
+[the Open Field rules](../rulesets/OPEN_FIELD.md) and
+[its validation and simulation review](review/OPEN_FIELD.md).
+
 ## Rules v6 Warp, the King's row and compatibility
 
 The Priestess warps instead of converting: select her, select a marked enemy within two

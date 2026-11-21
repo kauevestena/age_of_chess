@@ -1,0 +1,101 @@
+# Open Field: Age of Chess without formations. Every unit except the King moves and
+# attacks over up to two steps (Cavalry three), passing friendly units. See OPEN_FIELD.md.
+game:
+  name: Age of Chess – Open Field
+  version: 6
+  mode: open_field
+  formations: false
+  advance_reference: enemy_king_row
+  attack_all_directions: true
+  lone_commander_loses: true
+  commander_retreat_limit: 3
+  king_move_limit: 4
+  king_formation_guard: escort_first
+  archer_return_fire: true
+  same_type_stance: guarded_center
+  cavalry_pass_single_ally: true
+  formation_rearrangements: 0
+  formation_combat: ready_reserve
+  board:
+    rows: 8
+    cols: 8
+  minimal_loss:
+    enabled: true
+    preserve_order: [R, N, B, P, Q]
+  repetition_draw: 3
+  pieces:
+    P:
+      label: Pikeman
+      class: pikeman
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 2
+      abilities: []
+      value: 1
+    N:
+      label: Cavalry
+      class: cavalry
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 3
+      abilities: []
+      value: 3
+    B:
+      label: Archer
+      class: archer
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 2
+      abilities:
+        - name: ranged
+          range: 1
+          targets: [B, P, Q]
+        - name: power_shot
+          range: 1
+          support: adjacent
+          targets: [N, R]
+      value: 3
+    R:
+      label: Heavy Infantry
+      class: heavy_infantry
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 2
+      abilities: []
+      value: 5
+    Q:
+      label: Priestess
+      class: priestess
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        max_steps: 2
+        retreat_trigger: adjacent_enemy
+      abilities:
+        - name: warp
+          range: 2
+          targets: [P, N, B, R]
+      value: 4
+    K:
+      label: King
+      class: king
+      move:
+        steps: [[-1, -1], [-1, 0], [-1, 1]]
+        retreat_trigger: nearby_enemy
+        threat_radius: 2
+      abilities: []
+      value: 1000
+  # Rows are attackers, columns defenders. Kings cannot attack or fight back.
+  # Priestess melee is limited to King capture / mutual duel.
+  combat:
+    single:
+      P: {P: stance, N: win, B: win, R: lose, Q: win, K: win}
+      N: {P: lose, N: stance, B: win, R: win, Q: win, K: win}
+      B: {P: lose, N: lose, B: stance, R: lose, Q: win, K: win}
+      R: {P: win, N: lose, B: win, R: stance, Q: win, K: win}
+      Q: {P: illegal, N: illegal, B: illegal, R: illegal, Q: mutual, K: win}
+      K: {P: illegal, N: illegal, B: illegal, R: illegal, Q: illegal, K: illegal}
+    stacks: []
+rewards:
+  win: 1.0
+  loss: -1.0
+  draw: 0.0

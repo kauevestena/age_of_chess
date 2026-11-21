@@ -1,4 +1,4 @@
-import { initialState, transition } from "./engine.mjs";
+import { initialState, transition, MODES } from "./engine.mjs";
 
 export const SAVE_KEY = "age-of-chess.warfare.save.v1";
 export const SETTINGS_KEY = "age-of-chess.warfare.settings.v1";
@@ -42,7 +42,9 @@ export function readRecord(text) {
       !["squire", "knight", "marshal"].includes(c.southDifficulty))
   )
     throw Error("Invalid spectator commanders.");
-  let state = initialState();
+  // Saves from before rulesets were selectable have no `ruleset`: they are Warfare games.
+  if (c.ruleset !== undefined && !MODES.includes(c.ruleset)) throw Error("Unknown ruleset in this save.");
+  let state = initialState(c.ruleset ?? "warfare");
   const events = [];
   for (const action of record.moves) {
     const next = transition(state, action);
@@ -62,8 +64,8 @@ export function readRecord(text) {
   }
   return { record, state, events };
 }
-export function stateAt(moves, ply) {
-  let state = initialState();
+export function stateAt(moves, ply, ruleset = "warfare") {
+  let state = initialState(ruleset);
   for (const action of moves.slice(0, ply))
     state = transition(state, action).state;
   return state;
